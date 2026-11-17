@@ -17,7 +17,39 @@ const THEMES = [
   { id: 'darkroom', name: 'Darkroom', sw: ['#0a0606', '#221212', '#e5484d'] },
   { id: 'sepia', name: 'Sepia', sw: ['#f3ecdf', '#fbf6ec', '#a0612b'] },
   { id: 'forest', name: 'Forest', sw: ['#0c120f', '#1d2b23', '#4ade80'] },
+  { id: 'strawberry', name: 'Strawberry Milk', sw: ['#fde8ef', '#fff6f9', '#b8608a'] },
+  { id: 'lavender', name: 'Lavender Dream', sw: ['#ece6ff', '#faf8ff', '#8670b8'] },
+  { id: 'mint', name: 'Mint Macaron', sw: ['#e6f4ec', '#f6fffa', '#5a9a84'] },
+  { id: 'orchid', name: 'Midnight Orchid', sw: ['#221b2e', '#3d3150', '#d8b0ec'] },
 ];
+
+/**
+ * Viewing background (thumbnails + viewer): 'theme' follows the theme, otherwise a colour.
+ * Text, thumbnail plates and hover are derived from it so names stay readable on any colour,
+ * and they stay neutral (grey), so nothing tints the scans.
+ */
+function applyViewBg(bg) {
+  const root = document.documentElement.style;
+  const vars = ['--view-bg', '--view-text', '--view-text-2', '--view-thumb', '--view-hover'];
+  if (!bg || bg === 'theme' || !/^#[0-9a-f]{6}$/i.test(bg)) vars.forEach((v) => root.removeProperty(v));
+  else {
+    const n = parseInt(bg.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    const dark = lum < 0.5;
+    const shift = (k) => '#' + [r, g, b].map((c) => Math.max(0, Math.min(255, Math.round(c + k))).toString(16).padStart(2, '0')).join('');
+    root.setProperty('--view-bg', bg);
+    root.setProperty('--view-text', dark ? '#f2f2f2' : '#141414');
+    root.setProperty('--view-text-2', dark ? 'rgba(242,242,242,.68)' : 'rgba(20,20,20,.68)');
+    root.setProperty('--view-thumb', shift(dark ? 14 : -14));
+    root.setProperty('--view-hover', dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)');
+  }
+  $$('#view-bgs .bg-swatch').forEach((s) => s.setAttribute('aria-checked', String(s.dataset.bg === (bg || 'theme'))));
+  if (/^#[0-9a-f]{6}$/i.test(bg || '')) $('#view-bg-custom').value = bg;
+  state.settings.viewBackground = bg || 'theme';
+}
+$$('#view-bgs .bg-swatch').forEach((s) => s.addEventListener('click', () => { applyViewBg(s.dataset.bg); saveSettings({ viewBackground: s.dataset.bg }); }));
+$('#view-bg-custom').addEventListener('input', (e) => applyViewBg(e.target.value));
+$('#view-bg-custom').addEventListener('change', (e) => saveSettings({ viewBackground: e.target.value }));
 
 const state = {
   init: null,
@@ -1046,6 +1078,7 @@ async function start() {
   state.init = init;
   state.settings = init.settings;
   applyTheme(init.settings.theme);
+  applyViewBg(init.settings.viewBackground);
   $('#version').textContent = `v${init.version} · ${init.turboJpeg}`;
   $('#tone-method').innerHTML = init.toneMethods.map((m, i) => `<option value="${i}">${esc(t(m))}</option>`).join('');
   document.documentElement.style.setProperty('--tree-w', `${init.settings.treeWidth || 270}px`);

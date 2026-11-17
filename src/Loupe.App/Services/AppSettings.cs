@@ -12,6 +12,8 @@ public sealed class AppSettings
     public string Language { get; set; } = "en";
     /// <summary>Theme id (see css/themes.css).</summary>
     public string Theme { get; set; } = "graphite";
+    /// <summary>Behind thumbnails and in the viewer: "theme" or a colour (#rrggbb). Neutral grey by default.</summary>
+    public string ViewBackground { get; set; } = "#202020";
     public string LastFolder { get; set; } = "";
     /// <summary>Pinned folders and network shares shown at the top of the tree.</summary>
     public List<string> Favorites { get; set; } = [];

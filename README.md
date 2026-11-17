@@ -21,7 +21,7 @@ Striplight PRO engine (libjpeg-turbo + the Striplight tone methods).
 - **Merge parts**: `123_1` + `123_2` → a new folder `123`, files renamed the Striplight PRO way
   (`73_524_0_0_123_1_00001.jpg` → `73_524_0_0_123_00001.jpg`) and numbered continuously.
   Empty part folders can be deleted afterwards (with an optional confirmation). Undo moves everything back.
-- Themes (Graphite, Daylight, Midnight, Darkroom, Sepia, Forest), English / Polish.
+- Ten themes (Graphite, Daylight, Midnight, Darkroom, Sepia, Forest, Strawberry Milk, Lavender Dream, Mint Macaron, Midnight Orchid) and a neutral viewing background (grey by default) so scans are judged without a tint, English / Polish.
 
 ## Layout
 

@@ -242,6 +242,20 @@
         <div class="themes" id="themes"></div>
       </div>
       <div class="section">
+        <h3>Viewing background</h3>
+        <p class="hint">Behind the thumbnails and in the viewer. A neutral grey makes it easier to judge how dark or bright a scan really is.</p>
+        <div class="bg-row" id="view-bgs">
+          <button class="bg-swatch theme" data-bg="theme" title="Follow the theme"></button>
+          <button class="bg-swatch" data-bg="#000000" style="background:#000000" title="Black"></button>
+          <button class="bg-swatch" data-bg="#202020" style="background:#202020" title="Dark grey"></button>
+          <button class="bg-swatch" data-bg="#404040" style="background:#404040" title="Grey"></button>
+          <button class="bg-swatch" data-bg="#808080" style="background:#808080" title="Middle grey (18%)"></button>
+          <button class="bg-swatch" data-bg="#c0c0c0" style="background:#c0c0c0" title="Light grey"></button>
+          <button class="bg-swatch" data-bg="#ffffff" style="background:#ffffff" title="White"></button>
+          <input type="color" id="view-bg-custom" title="Custom colour">
+        </div>
+      </div>
+      <div class="section">
         <h3>Language</h3>
         <div class="seg" id="lang" role="radiogroup" aria-label="Language" data-no-i18n>
           <button data-v="en">English</button><button data-v="pl">Polski</button>

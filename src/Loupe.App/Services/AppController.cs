@@ -95,6 +95,8 @@ public sealed class AppController
             s.ThumbSize = Math.Clamp(BridgeHost.Arg(args, "thumbSize", s.ThumbSize), 80, 520);
             s.GridColumns = Math.Clamp(BridgeHost.Arg(args, "gridColumns", s.GridColumns), 0, 12);
             s.ShowNames = BridgeHost.Arg(args, "showNames", s.ShowNames);
+            string bg = BridgeHost.Arg(args, "viewBackground", s.ViewBackground);
+            if (bg == "theme" || System.Text.RegularExpressions.Regex.IsMatch(bg, "^#[0-9a-fA-F]{6}$")) s.ViewBackground = bg;
             s.TreeWidth = Math.Clamp(BridgeHost.Arg(args, "treeWidth", s.TreeWidth), 160, 700);
             s.SaveQuality = Math.Clamp(BridgeHost.Arg(args, "saveQuality", s.SaveQuality), 0, 100);
             s.LosslessRotate = BridgeHost.Arg(args, "losslessRotate", s.LosslessRotate);

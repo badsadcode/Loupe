@@ -136,6 +136,98 @@
   color-scheme: dark;
 }
 
+/* Strawberry Milk: pink, cream, rose gold. */
+:root[data-theme="strawberry"] {
+  --is-dark: 0;
+  --bg: #fde8ef;
+  --canvas: #f9dbe6;
+  --surface: #fff6f9;
+  --surface-2: #fdeef3;
+  --surface-3: #fadfe9;
+  --surface-4: #f3cddc;
+  --border: rgba(120, 40, 70, 0.10);
+  --border-2: rgba(120, 40, 70, 0.18);
+  --text: #4a2234;
+  --text-2: #8a4d66;
+  --text-3: #b9849a;
+  --accent: #b8608a;
+  --accent-hover: #c97399;
+  --accent-ink: #fff6f9;
+  --danger: #c0392b;
+  --ok: #3f9a6e;
+  --thumb-bg: #f6d3e0;
+  color-scheme: light;
+}
+
+/* Lavender Dream: lilac, violet, soft white. */
+:root[data-theme="lavender"] {
+  --is-dark: 0;
+  --bg: #ece6ff;
+  --canvas: #e2d9fd;
+  --surface: #faf8ff;
+  --surface-2: #f2eeff;
+  --surface-3: #e6defd;
+  --surface-4: #d7cbf6;
+  --border: rgba(70, 50, 130, 0.10);
+  --border-2: rgba(70, 50, 130, 0.18);
+  --text: #2e2550;
+  --text-2: #64579a;
+  --text-3: #9a8fc4;
+  --accent: #8670b8;
+  --accent-hover: #977fcc;
+  --accent-ink: #faf8ff;
+  --danger: #c23b5a;
+  --ok: #3f9a6e;
+  --thumb-bg: #ddd3fa;
+  color-scheme: light;
+}
+
+/* Mint Macaron: sage green, mint, ivory. */
+:root[data-theme="mint"] {
+  --is-dark: 0;
+  --bg: #e6f4ec;
+  --canvas: #d6ece0;
+  --surface: #f6fffa;
+  --surface-2: #edf8f2;
+  --surface-3: #dcefe5;
+  --surface-4: #c8e5d6;
+  --border: rgba(30, 90, 65, 0.10);
+  --border-2: rgba(30, 90, 65, 0.18);
+  --text: #1f3d31;
+  --text-2: #4b7464;
+  --text-3: #85a898;
+  --accent: #5a9a84;
+  --accent-hover: #6aad96;
+  --accent-ink: #f6fffa;
+  --danger: #c0392b;
+  --ok: #3f8f5e;
+  --thumb-bg: #cfe8db;
+  color-scheme: light;
+}
+
+/* Midnight Orchid: dark plum, orchid, lilac. */
+:root[data-theme="orchid"] {
+  --is-dark: 1;
+  --bg: #221b2e;
+  --canvas: #1a1424;
+  --surface: #2a2238;
+  --surface-2: #322842;
+  --surface-3: #3d3150;
+  --surface-4: #4a3c60;
+  --border: rgba(220, 190, 255, 0.08);
+  --border-2: rgba(220, 190, 255, 0.15);
+  --text: #f0e8f8;
+  --text-2: #bfaed6;
+  --text-3: #8a7aa3;
+  --accent: #d8b0ec;
+  --accent-hover: #e6c8f5;
+  --accent-ink: #2a1838;
+  --danger: #ff8fa3;
+  --ok: #7ee0b0;
+  --thumb-bg: #1c1626;
+  color-scheme: dark;
+}
+
 /* Derived tokens (same recipe for every theme). */
 :root {
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
