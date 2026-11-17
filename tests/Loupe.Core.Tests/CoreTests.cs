@@ -531,3 +531,22 @@ public class FileCacheTests
         Assert.False(new FileCache(t.File("c2"), 1000, "off").Applies(t.File("f0.jpg")));
     }
 }
+
+public class CachePriorityTests
+{
+    [Fact]
+    public void BackgroundCopyWaitsWhileTheUserWaits()
+    {
+        using var t = new TempDir();
+        string f = t.File("a.jpg");
+        File.WriteAllBytes(f, new byte[200_000]);
+        var cache = new FileCache(t.File("cache"), 1 << 30, "all");
+        var busy = typeof(FileCache).GetField("_foreground", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        busy.SetValue(cache, 1);                                  // the user is waiting for a file
+        var warm = Task.Run(() => cache.Warm(f));
+        Thread.Sleep(200);
+        Assert.False(warm.IsCompleted);                           // the background copy holds back
+        busy.SetValue(cache, 0);
+        Assert.True(warm.Wait(5000) && warm.Result);
+    }
+}

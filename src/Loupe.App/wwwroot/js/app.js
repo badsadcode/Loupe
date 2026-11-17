@@ -260,7 +260,7 @@ async function openFolder(path, { keepSelection = false, focusName = null } = {}
   if (!sameFolder) {
     revealInTree(state.path);
     // Slow drive: copy this folder's images to the local cache while the user browses.
-    if (state.images.length) call('cache.prefetch', { paths: state.images.map((it) => it.path) }).catch(() => {});
+    if (state.images.length) call('cache.prefetch', { paths: state.images.map((it) => it.path), focus: focusItem()?.path }).catch(() => {});
     else call('cache.stop').catch(() => {});
   }
   const otherNote = r.otherFiles ? ' · ' + tn(r.otherFiles, '{n} other file', '{n} other files') : '';
@@ -389,8 +389,15 @@ function renderGrid() {
   updateCount();
 }
 
+// The background copy continues from the image the user is on (they may jump far ahead).
+const cacheFocus = debounce(() => {
+  const it = state.viewer ? state.images[state.vIndex] : focusItem();
+  if (it?.type === 'image') call('cache.focus', { path: it.path }).catch(() => {});
+}, 150);
+
 function paintSelection() {
   pushPopup();
+  cacheFocus();
   $$('#grid .tile').forEach((el) => {
     const i = Number(el.dataset.i);
     el.classList.toggle('sel', state.selected.has(i));
@@ -513,6 +520,7 @@ async function showImage(index, { keepView = false } = {}) {
   $('#v-name').textContent = it.name;
   paintViewerFlag();
   pushPopup();
+  cacheFocus();
   const token = ++viewToken;
   const img = $('#v-img');
   const url = viewUrl(it, { full: wantFull });
@@ -1436,10 +1444,11 @@ on('cache.progress', (p) => {
   el.classList.toggle('done', !p.running);
   $('#cache-text').textContent = p.running
     ? t('Caching {done} / {total}', { done: p.done, total: p.total })
-    : t('Folder cached');
+    : p.stopped ? t('Caching stopped') : t('Folder cached');
   if (!p.running) cacheDoneTimer = setTimeout(() => { el.hidden = true; }, 4000);
 });
 
+$('#cache-status').addEventListener('click', () => { call('cache.stop').catch(() => {}); });
 $('#cache-mode').addEventListener('change', (e) => { saveSettings({ cacheMode: e.target.value }); refreshStorage(); });
 $('#cache-limit').addEventListener('change', (e) => saveSettings({ cacheLimitGb: Math.max(1, Math.min(2000, Number(e.target.value) || 20)) }));
 $('#cache-prefetch').addEventListener('change', (e) => saveSettings({ cachePrefetch: e.target.checked }));

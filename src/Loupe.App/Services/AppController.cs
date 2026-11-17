@@ -414,10 +414,12 @@ public sealed class AppController
             if (!_settings.CachePrefetch || paths.Count == 0 || !Cache.Applies(paths[0])) return false;
             var cts = new CancellationTokenSource();
             _prefetch = cts;
+            _prefetchFocus = BridgeHost.Arg<string?>(args, "focus", null);
             _ = Task.Run(() => Prefetch(paths, cts.Token));
             return true;
         });
         _bridge.On("cache.stop", _ => { _prefetch?.Cancel(); return null; });
+        _bridge.On("cache.focus", args => { _prefetchFocus = BridgeHost.Arg<string?>(args, "path", null); return null; });
 
         // ---- storage
         _bridge.OnAsync("storage.info", async _ => await Task.Run(() =>
@@ -462,28 +464,39 @@ public sealed class AppController
 
     // ------------------------------------------------------------------ helpers
 
-    /// <summary>Background copy of a folder's images (two at a time; network links like a few parallel reads).</summary>
-    private async Task Prefetch(List<string> paths, CancellationToken ct)
+    private volatile string? _prefetchFocus;
+
+    /// <summary>
+    /// Background copy of a folder's images, one at a time so it never takes the whole link. It
+    /// starts at the image the user is on and works outwards from there, follows jumps
+    /// (cache.focus), and pauses whenever the user is waiting for a file (FileCache.Busy).
+    /// </summary>
+    private void Prefetch(List<string> paths, CancellationToken ct)
     {
-        int done = 0, copied = 0, total = paths.Count;
+        var left = new List<string>(paths);
+        int total = paths.Count, done = 0, copied = 0;
         var last = DateTime.MinValue;
         try
         {
-            await Parallel.ForEachAsync(paths, new ParallelOptions { MaxDegreeOfParallelism = 2, CancellationToken = ct }, (p, token) =>
+            while (left.Count > 0)
             {
-                try { if (Cache.Warm(p, token)) Interlocked.Increment(ref copied); }
+                ct.ThrowIfCancellationRequested();
+                int at = _prefetchFocus is { } f ? Math.Max(0, paths.FindIndex(p => string.Equals(p, f, StringComparison.OrdinalIgnoreCase))) : 0;
+                // Next: the first image not done yet at or after the one in view, else from the top.
+                string next = left.FirstOrDefault(p => paths.IndexOf(p) >= at) ?? left[0];
+                left.Remove(next);
+                try { if (Cache.Warm(next, ct)) copied++; }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-                int d = Interlocked.Increment(ref done);
-                if ((DateTime.UtcNow - last).TotalMilliseconds > 300 || d == total)
+                done++;
+                if ((DateTime.UtcNow - last).TotalMilliseconds > 300 || left.Count == 0)
                 {
                     last = DateTime.UtcNow;
-                    _bridge.Emit("cache.progress", new { done = d, total, running = d < total });
+                    _bridge.Emit("cache.progress", new { done, total, running = left.Count > 0 });
                 }
-                return ValueTask.CompletedTask;
-            });
+            }
         }
         catch (OperationCanceledException) { }
-        _bridge.Emit("cache.progress", new { done, total, running = false, copied });
+        _bridge.Emit("cache.progress", new { done, total, running = false, copied, stopped = left.Count > 0 });
     }
 
     private IEnumerable<string> RescanRoots() =>

@@ -563,7 +563,8 @@
   "many": "{n} obrazów w tym folderze i podfolderach",
   "other": "{n} obrazów w tym folderze i podfolderach"
  },
- "Copying this folder's images to the local cache, so they open fast": "Kopiowanie obrazów z tego folderu do lokalnej pamięci, aby otwierały się szybko",
+ "Copying this folder's images to the local cache, so they open fast. It pauses while you look at an image and follows when you jump. Click to stop.": "Kopiowanie obrazów z tego folderu do lokalnej pamięci, aby otwierały się szybko. Wstrzymuje się, gdy oglądasz obraz, i podąża za tobą, gdy przeskakujesz. Kliknij, aby zatrzymać.",
+ "Caching stopped": "Kopiowanie zatrzymane",
  "Network cache": "Pamięć podręczna sieci",
  "Local copies of images from slow places (network shares over VPN, external disks): each file crosses the slow link once. Changed files are noticed by their size and date.": "Lokalne kopie obrazów z wolnych miejsc (udziały sieciowe przez VPN, dyski zewnętrzne): każdy plik przechodzi przez wolne łącze tylko raz. Zmienione pliki są rozpoznawane po rozmiarze i dacie.",
  "Use the cache for": "Używaj pamięci dla",

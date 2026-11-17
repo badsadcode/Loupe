@@ -14,6 +14,10 @@ public sealed class FileCache
 {
     private readonly ConcurrentDictionary<string, DriveKind> _kinds = new(StringComparer.OrdinalIgnoreCase);
     private long _approxBytes = -1;
+    private int _foreground;     // reads the user is waiting for (viewer, thumbnails, info)
+
+    /// <summary>True while a read the user waits for is running: background copies pause meanwhile.</summary>
+    public bool Busy => Volatile.Read(ref _foreground) > 0;
     private int _writesSinceTrim;
 
     public enum DriveKind { Local, Slow }
@@ -84,9 +88,18 @@ public sealed class FileCache
             }
         }
         catch (IOException) { }
-        var data = Io.Read(path);
+        Interlocked.Increment(ref _foreground);
+        byte[] data;
+        try { data = Io.Read(path); }
+        finally { Interlocked.Decrement(ref _foreground); }
         Store(entry, data);
         return data;
+    }
+
+    /// <summary>Waits while the user is waiting for another file (the slow link is theirs first).</summary>
+    private void YieldToForeground(CancellationToken ct)
+    {
+        while (Busy && !ct.IsCancellationRequested) Thread.Sleep(25);
     }
 
     /// <summary>
@@ -116,6 +129,7 @@ public sealed class FileCache
         if (!fi.Exists) return false;
         string entry = EntryPath(fi);
         if (File.Exists(entry)) return false;
+        YieldToForeground(ct);
         Directory.CreateDirectory(Path.GetDirectoryName(entry)!);
         string tmp = entry + "." + Guid.NewGuid().ToString("N")[..6] + ".tmp";
         try
@@ -128,6 +142,7 @@ public sealed class FileCache
                 while ((n = src.Read(buf, 0, buf.Length)) > 0)
                 {
                     ct.ThrowIfCancellationRequested();
+                    YieldToForeground(ct);
                     dst.Write(buf, 0, n);
                 }
             }

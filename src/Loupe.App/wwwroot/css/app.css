@@ -246,7 +246,7 @@ body.popup.fs .pop-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10
 body.popup.fs.bar-shown .pop-bar { transform: none; }
 body.popup .empty { pointer-events: none; }
 .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.cache-status { display: flex; align-items: center; gap: 7px; color: var(--text-2); white-space: nowrap; }
+.cache-status { cursor: pointer; display: flex; align-items: center; gap: 7px; color: var(--text-2); white-space: nowrap; }
 .cache-status .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent-ring); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 .cache-status.done .spin { animation: none; border-color: var(--ok); }
 .empty-note { color: var(--text-3); padding: 20px 0; text-align: center; }
