@@ -206,7 +206,7 @@ public sealed class AppController
             string path = BridgeHost.Arg(args, "path", "");
             return await Task.Run(() =>
             {
-                var bytes = File.ReadAllBytes(path);
+                var bytes = Io.Read(path);
                 var info = JpegMeta.Read(bytes);
                 var fi = new FileInfo(path);
                 return new
@@ -330,7 +330,7 @@ public sealed class AppController
             if (log is null || file is null) throw new BridgeException(Loc.T("Nothing to undo."));
             await Task.Run(() => SafeMover.Undo(log, Backups));
             _rescan.Follow(log.Moves.Select(m => new MovePair(m.To, m.From)));
-            File.Delete(file);
+            Io.Delete(file);
             return new { title = log.Title, next = LastUndo()?.Title, folder = log.Moves.Count > 0 ? Path.GetDirectoryName(log.Moves[0].From) : null };
         });
 

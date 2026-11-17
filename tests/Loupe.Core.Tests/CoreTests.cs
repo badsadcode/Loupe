@@ -470,3 +470,21 @@ public class StructureTests
         Assert.NotEmpty(bad.Problems);
     }
 }
+
+public class IoTests
+{
+    [Fact]
+    public void AFileBeingReadCanStillBeRenamed()
+    {
+        using var t = new TempDir();
+        string a = t.File("a.jpg"), b = t.File("b.jpg");
+        File.WriteAllBytes(a, Img.Gray(64, 48));
+        // Another reader holds the file open the way Io.Read opens it.
+        using (var reader = new FileStream(a, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            SafeMover.Run([new MovePair(a, b)]);
+        }
+        Assert.True(File.Exists(b));
+        Assert.Equal(Img.Gray(64, 48).Length, Io.Read(b).Length);
+    }
+}

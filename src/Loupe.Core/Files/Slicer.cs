@@ -91,7 +91,7 @@ public static class Slicer
         {
             try
             {
-                var (w, h, _) = TurboJpeg.ReadHeader(File.ReadAllBytes(src));
+                var (w, h, _) = TurboJpeg.ReadHeader(Io.Read(src));
                 if ((s.Vertical ? w : h) < parts * 16) problems.Add($"{Path.GetFileName(src)} is too small to cut into {parts} pieces.");
             }
             catch (TurboJpegException e) { problems.Add($"{Path.GetFileName(src)}: {e.Message}"); }
@@ -130,7 +130,7 @@ public static class Slicer
             // 1. Pieces to temporary files.
             foreach (var src in plan.Sources)
             {
-                byte[] bytes = File.ReadAllBytes(src);
+                byte[] bytes = Io.Read(src);
                 int q = quality is >= 1 and <= 100 ? quality : JpegMeta.EstimateQuality(bytes) is > 0 and var est ? est : 95;
                 var img = TurboJpeg.DecodeNative(bytes);
                 var ranges = Ranges(s.Vertical ? img.Width : img.Height, s);
@@ -149,12 +149,12 @@ public static class Slicer
             foreach (var src in plan.Sources)
             {
                 string kept = Path.Combine(keepFolder, Path.GetFileName(src));
-                File.Move(src, kept);
+                Io.Move(src, kept);
                 restore.Add(new MovePair(kept, src));
                 if (backups is not null && backups.Has(src))
                 {
                     string keptBackup = Path.Combine(keepFolder, "original-" + Path.GetFileName(src));
-                    File.Move(backups.PathFor(src), keptBackup);
+                    Io.Move(backups.PathFor(src), keptBackup);
                     restore.Add(new MovePair(keptBackup, backups.PathFor(src)));
                 }
             }
@@ -172,8 +172,8 @@ public static class Slicer
         }
         catch
         {
-            foreach (var r in restore) if (File.Exists(r.From) && !File.Exists(r.To)) File.Move(r.From, r.To);
-            foreach (var t in temps) if (File.Exists(t)) File.Delete(t);
+            foreach (var r in restore) if (File.Exists(r.From) && !File.Exists(r.To)) Io.Move(r.From, r.To);
+            foreach (var t in temps) if (File.Exists(t)) Io.Delete(t);
             throw;
         }
     }

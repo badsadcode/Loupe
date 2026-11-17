@@ -100,7 +100,7 @@ public sealed class ImageService(AppController controller)
         }
         if (img is null)
         {
-            var decoded = TurboJpeg.DecodeAtLeast(File.ReadAllBytes(path), max);
+            var decoded = TurboJpeg.DecodeAtLeast(Loupe.Core.Files.Io.Read(path), max);
             img = max > 0 ? ImageEdit.Fit(decoded, max, max) : decoded;
             lock (_decodedLock)
             {

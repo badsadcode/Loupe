@@ -145,7 +145,7 @@ public static partial class TurboJpeg
     }
 
     public static DecodedImage? DecodeFile(string path, int pixelFormat, bool requireGrayscaleSource = false) =>
-        Decode(File.ReadAllBytes(path), pixelFormat, requireGrayscaleSource);
+        Decode(Loupe.Core.Files.Io.Read(path), pixelFormat, requireGrayscaleSource);
 
     /// <summary>Compresses a gray (1 byte/px) or BGRA (4 bytes/px, 4:4:4) buffer to JPEG in memory.</summary>
     public static unsafe byte[] Encode(ReadOnlySpan<byte> pixels, int width, int height, int pitch, int pixelFormat,

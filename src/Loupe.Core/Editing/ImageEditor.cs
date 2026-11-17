@@ -35,7 +35,7 @@ public sealed class BackupStore(string root)
         Directory.CreateDirectory(Path.GetDirectoryName(b)!);
         string tmp = b + ".tmp";
         File.WriteAllBytes(tmp, originalBytes);
-        File.Move(tmp, b, overwrite: true);
+        Loupe.Core.Files.Io.Move(tmp, b, overwrite: true);
     }
 
     /// <summary>Puts the original back and removes the backup. False when there is none.</summary>
@@ -43,7 +43,7 @@ public sealed class BackupStore(string root)
     {
         string b = PathFor(file);
         if (!File.Exists(b)) return false;
-        FileWrite.ReplaceAtomically(file, File.ReadAllBytes(b));
+        FileWrite.ReplaceAtomically(file, Loupe.Core.Files.Io.Read(b));
         Delete(b);
         return true;
     }
@@ -55,13 +55,13 @@ public sealed class BackupStore(string root)
         if (!File.Exists(a)) return;
         string b = PathFor(to);
         Directory.CreateDirectory(Path.GetDirectoryName(b)!);
-        File.Move(a, b, overwrite: true);
+        Loupe.Core.Files.Io.Move(a, b, overwrite: true);
         PruneEmpty(Path.GetDirectoryName(a));
     }
 
     private void Delete(string backup)
     {
-        File.Delete(backup);
+        Loupe.Core.Files.Io.Delete(backup);
         PruneEmpty(Path.GetDirectoryName(backup));
     }
 
@@ -96,7 +96,7 @@ public static class FileWrite
     {
         string tmp = path + ".loupe-tmp";
         File.WriteAllBytes(tmp, bytes);
-        File.Move(tmp, path, overwrite: true);
+        Loupe.Core.Files.Io.Move(tmp, path, overwrite: true);
     }
 }
 
@@ -120,7 +120,7 @@ public sealed class ImageEditor(BackupStore backups)
         try
         {
             if (edit.IsNoOp) return new EditResult(path, true, true, 0, null);
-            byte[] original = File.ReadAllBytes(path);
+            byte[] original = Loupe.Core.Files.Io.Read(path);
             var (bytes, lossless, q) = Render(original, edit, save);
             Backups.EnsureBackup(path, original);
             FileWrite.ReplaceAtomically(path, bytes);
@@ -179,10 +179,10 @@ public sealed class ImageRenderer(string thumbRoot)
         var fi = new FileInfo(file);
         if (!fi.Exists) throw new FileNotFoundException("File not found.", file);
         string cached = ThumbPath(file, size, fi);
-        try { if (File.Exists(cached)) return File.ReadAllBytes(cached); }
+        try { if (File.Exists(cached)) return Loupe.Core.Files.Io.Read(cached); }
         catch (IOException) { }
 
-        var bytes = File.ReadAllBytes(file);
+        var bytes = Loupe.Core.Files.Io.Read(file);
         var img = ImageEdit.Fit(TurboJpeg.DecodeAtLeast(bytes, size), size, size);
         var jpg = TurboJpeg.Encode(img, 82);
         try

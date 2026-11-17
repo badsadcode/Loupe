@@ -66,13 +66,13 @@ public static class SafeMover
             {
                 var m = real[i];
                 string tmp = Path.Combine(Path.GetDirectoryName(m.From)!, $".loupe-{tag}-{i}.tmp");
-                File.Move(m.From, tmp);
+                Io.Move(m.From, tmp);
                 temps.Add((m, tmp));
             }
             foreach (var (m, tmp) in temps)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(m.To)!);
-                File.Move(tmp, m.To);
+                Io.Move(tmp, m.To);
                 done.Add((m, tmp));
             }
         }
@@ -90,7 +90,7 @@ public static class SafeMover
 
     private static void TryMove(string a, string b)
     {
-        try { if (File.Exists(a) && !File.Exists(b)) File.Move(a, b); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        try { if (File.Exists(a) && !File.Exists(b)) Io.Move(a, b); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
     private static string Norm(string p) => Path.GetFullPath(p);
@@ -100,13 +100,13 @@ public static class SafeMover
     {
         foreach (var d in log.DeletedFolders) Directory.CreateDirectory(d);
         Run(log.Moves.Select(m => new MovePair(m.To, m.From)).ToList(), backups);
-        foreach (var f in log.RemoveOnUndo) if (File.Exists(f)) File.Delete(f);
+        foreach (var f in log.RemoveOnUndo) if (File.Exists(f)) Io.Delete(f);
         foreach (var r in log.RestoreOnUndo)
         {
             if (!File.Exists(r.From)) continue;
             if (File.Exists(r.To)) throw new IOException($"File already exists: {r.To}");
             Directory.CreateDirectory(Path.GetDirectoryName(r.To)!);
-            File.Move(r.From, r.To);
+            Io.Move(r.From, r.To);
         }
         foreach (var d in log.CreatedFolders.OrderByDescending(x => x.Length))
             if (Directory.Exists(d) && !Directory.EnumerateFileSystemEntries(d).Any()) Directory.Delete(d);
