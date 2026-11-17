@@ -1404,6 +1404,9 @@ function showMenu(x, y, ctx) {
   menuEl = document.createElement('div');
   menuEl.className = 'context-menu';
   const html = fixed.map((f, i) => `<button data-fixed="${i}">${icon(f.icon, 15)}<span>${esc(f.label)}</span></button>`);
+  // Say what the tools below apply to when several images are selected.
+  const nSel = ctx.kind === 'image' && !ctx.inViewer ? selectedImages().length : 0;
+  if (nSel > 1) html.unshift(`<div class="menu-head">${esc(tn(nSel, '{n} selected image', '{n} selected images'))}</div>`);
   const tools = own.map((id) => (id === '|' ? '<div class="sep"></div>'
     : `<button data-tool="${id}">${icon(TOOLS[id].icon, 15)}<span>${esc(t(TOOLS[id].label))}</span></button>`));
   if (tools.length) html.push('<div class="sep"></div>', ...tools);
