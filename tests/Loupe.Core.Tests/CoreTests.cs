@@ -488,3 +488,46 @@ public class IoTests
         Assert.Equal(Img.Gray(64, 48).Length, Io.Read(b).Length);
     }
 }
+
+public class FileCacheTests
+{
+    [Fact]
+    public void ReadsOnceThenFromTheLocalCopy()
+    {
+        using var t = new TempDir();
+        string src = t.File("share", "a.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(src)!);
+        File.WriteAllBytes(src, [1, 2, 3, 4]);
+        var stamp = File.GetLastWriteTimeUtc(src);
+        var cache = new FileCache(t.File("cache"), 1 << 20, "all");
+        Assert.Equal([1, 2, 3, 4], cache.Read(src));
+        Assert.True(cache.Has(src));
+
+        // Same size and time at the source: the cached copy is used (the slow file is not read again).
+        File.WriteAllBytes(src, [9, 9, 9, 9]);
+        File.SetLastWriteTimeUtc(src, stamp);
+        Assert.Equal([1, 2, 3, 4], cache.Read(src));
+
+        // A real change (new time) is noticed.
+        File.SetLastWriteTimeUtc(src, stamp.AddMinutes(1));
+        Assert.Equal([9, 9, 9, 9], cache.Read(src));
+        Assert.Equal([9, 9], cache.ReadHead(src, 2));
+    }
+
+    [Fact]
+    public void WarmCopiesAndTrimKeepsTheLimit()
+    {
+        using var t = new TempDir();
+        var cache = new FileCache(t.File("cache"), 2500, "all");
+        for (int i = 0; i < 5; i++)
+        {
+            string f = t.File($"f{i}.jpg");
+            File.WriteAllBytes(f, new byte[1000]);
+            Assert.True(cache.Warm(f));
+            Assert.False(cache.Warm(f));                 // already there
+        }
+        cache.Trim();
+        Assert.True(cache.Usage().Bytes <= 2500);
+        Assert.False(new FileCache(t.File("c2"), 1000, "off").Applies(t.File("f0.jpg")));
+    }
+}

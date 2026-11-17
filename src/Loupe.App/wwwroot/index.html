@@ -193,6 +193,7 @@
       <button class="btn btn-ghost xs" data-cmd="cancelJob">Stop</button>
     </div>
     <span class="grow"></span>
+    <span class="cache-status" id="cache-status" hidden title="Copying this folder's images to the local cache, so they open fast"><span class="spin"></span><span id="cache-text"></span></span>
     <span id="version" data-no-i18n></span>
   </footer>
 
@@ -389,6 +390,22 @@
           <button class="btn" data-cmd="openBackups"><i data-icon="external-link"></i>Open folder</button>
           <button class="btn" data-cmd="pickBackups"><i data-icon="folder-open"></i>Change…</button>
           <button class="btn btn-danger" data-cmd="clearBackups"><i data-icon="trash-2"></i>Forget originals</button>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Network cache</h3>
+        <p class="hint">Local copies of images from slow places (network shares over VPN, external disks): each file crosses the slow link once. Changed files are noticed by their size and date.</p>
+        <div class="field-grid two">
+          <label class="field">Use the cache for
+            <select id="cache-mode"><option value="network">Network and removable drives</option><option value="all">All drives</option><option value="off">Nothing (off)</option></select>
+          </label>
+          <label class="field">Size limit (GB)<input type="number" id="cache-limit" min="1" max="2000"></label>
+        </div>
+        <label class="switch"><input type="checkbox" id="cache-prefetch"><span></span>Copy a slow folder's images in the background when it is opened</label>
+        <div class="path-row"><code id="st-cache-path" data-no-i18n></code><span class="chip" id="st-cache-size" data-no-i18n></span></div>
+        <div class="btn-row wrap">
+          <button class="btn" data-cmd="pickCache"><i data-icon="folder-open"></i>Change…</button>
+          <button class="btn" data-cmd="clearCache"><i data-icon="trash-2"></i>Clear cache</button>
         </div>
       </div>
       <div class="section">

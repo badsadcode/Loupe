@@ -114,13 +114,15 @@ public sealed record EditResult(string Path, bool Ok, bool Lossless, int Quality
 public sealed class ImageEditor(BackupStore backups)
 {
     public BackupStore Backups { get; } = backups;
+    /// <summary>Reads source files (the app passes the network cache).</summary>
+    public Func<string, byte[]> ReadSource { get; set; } = Loupe.Core.Files.Io.Read;
 
     public EditResult Apply(string path, EditSettings edit, SaveOptions save)
     {
         try
         {
             if (edit.IsNoOp) return new EditResult(path, true, true, 0, null);
-            byte[] original = Loupe.Core.Files.Io.Read(path);
+            byte[] original = ReadSource(path);
             var (bytes, lossless, q) = Render(original, edit, save);
             Backups.EnsureBackup(path, original);
             FileWrite.ReplaceAtomically(path, bytes);
@@ -154,6 +156,8 @@ public sealed class ImageEditor(BackupStore backups)
 public sealed class ImageRenderer(string thumbRoot)
 {
     public string ThumbRoot { get; } = thumbRoot;
+    /// <summary>Reads source files (the app passes the network cache).</summary>
+    public Func<string, byte[]> ReadSource { get; set; } = Loupe.Core.Files.Io.Read;
 
     private string ThumbPath(string file, int size, FileInfo fi)
     {
@@ -182,7 +186,7 @@ public sealed class ImageRenderer(string thumbRoot)
         try { if (File.Exists(cached)) return Loupe.Core.Files.Io.Read(cached); }
         catch (IOException) { }
 
-        var bytes = Loupe.Core.Files.Io.Read(file);
+        var bytes = ReadSource(file);
         var img = ImageEdit.Fit(TurboJpeg.DecodeAtLeast(bytes, size), size, size);
         var jpg = TurboJpeg.Encode(img, 82);
         try

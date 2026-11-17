@@ -257,7 +257,12 @@ async function openFolder(path, { keepSelection = false, focusName = null } = {}
   state.anchor = state.focus;
   renderGrid();
   renderCrumbs();
-  if (!sameFolder) revealInTree(state.path);
+  if (!sameFolder) {
+    revealInTree(state.path);
+    // Slow drive: copy this folder's images to the local cache while the user browses.
+    if (state.images.length) call('cache.prefetch', { paths: state.images.map((it) => it.path) }).catch(() => {});
+    else call('cache.stop').catch(() => {});
+  }
   const otherNote = r.otherFiles ? ' · ' + tn(r.otherFiles, '{n} other file', '{n} other files') : '';
   status(r.path + otherNote);
   refreshInspector();
@@ -1391,6 +1396,9 @@ async function openSettings() {
   $('#set-quality').value = String(s.saveQuality ?? 0);
   $('#set-lossless').checked = s.losslessRotate ?? true;
   $('#set-workers').value = s.workers ?? 4;
+  $('#cache-mode').value = s.cacheMode ?? 'network';
+  $('#cache-limit').value = s.cacheLimitGb ?? 20;
+  $('#cache-prefetch').checked = s.cachePrefetch ?? true;
   $('#about').innerHTML = `Loupe ${esc(state.init?.version ?? '')} · ${esc(state.init?.turboJpeg ?? '')}<br>Bad Ideas Works · ${esc(t('built on the Striplight PRO engine'))}`;
   $$('.theme-card').forEach((c) => c.setAttribute('aria-checked', String(c.dataset.theme === document.documentElement.dataset.theme)));
   renderToolList();
@@ -1406,6 +1414,8 @@ async function refreshStorage() {
   $('#st-backup-size').textContent = `${tn(st.backupFiles, '{n} file', '{n} files')} · ${fmtBytes(st.backupBytes)}`;
   $('#st-thumb-path').textContent = st.thumbRoot;
   $('#st-thumb-size').textContent = `${tn(st.thumbFiles, '{n} file', '{n} files')} · ${fmtBytes(st.thumbBytes)}`;
+  $('#st-cache-path').textContent = st.cacheRoot;
+  $('#st-cache-size').textContent = `${tn(st.cacheFiles, '{n} file', '{n} files')} · ${fmtBytes(st.cacheBytes)}`;
 }
 
 $('#set-quality').addEventListener('change', (e) => saveSettings({ saveQuality: Number(e.target.value) }));
@@ -1415,6 +1425,24 @@ $('#lang').addEventListener('change', async (e) => {
   await run('app.setLanguage', { lang: e.target.value });
   location.reload();
 });
+
+// ------------------------------------------------------------------ network cache
+
+let cacheDoneTimer;
+on('cache.progress', (p) => {
+  clearTimeout(cacheDoneTimer);
+  const el = $('#cache-status');
+  el.hidden = false;
+  el.classList.toggle('done', !p.running);
+  $('#cache-text').textContent = p.running
+    ? t('Caching {done} / {total}', { done: p.done, total: p.total })
+    : t('Folder cached');
+  if (!p.running) cacheDoneTimer = setTimeout(() => { el.hidden = true; }, 4000);
+});
+
+$('#cache-mode').addEventListener('change', (e) => { saveSettings({ cacheMode: e.target.value }); refreshStorage(); });
+$('#cache-limit').addEventListener('change', (e) => saveSettings({ cacheLimitGb: Math.max(1, Math.min(2000, Number(e.target.value) || 20)) }));
+$('#cache-prefetch').addEventListener('change', (e) => saveSettings({ cachePrefetch: e.target.checked }));
 
 // ------------------------------------------------------------------ jobs
 
@@ -1516,6 +1544,8 @@ const commands = {
     openFolder(state.path, { keepSelection: true });
   },
   clearThumbs: async () => { await run('storage.clearThumbs'); refreshStorage(); },
+  clearCache: async () => { await run('storage.clearCache'); refreshStorage(); },
+  pickCache: async () => { const p = await run('storage.pickCacheFolder'); if (p) refreshStorage(); },
   openLang: () => run('i18n.openFolder'),
 };
 

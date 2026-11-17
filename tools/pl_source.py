@@ -402,6 +402,18 @@ PL = {
     "Archive structure in the name: folders below this one + counter": "Struktura archiwum w nazwie: foldery poniżej tego + licznik",
     "{n} images in the selected folders": ("{n} obraz w zaznaczonych folderach", "{n} obrazy w zaznaczonych folderach", "{n} obrazów w zaznaczonych folderach"),
     "{n} images in this folder and its subfolders": ("{n} obraz w tym folderze i podfolderach", "{n} obrazy w tym folderze i podfolderach", "{n} obrazów w tym folderze i podfolderach"),
+    "Copying this folder's images to the local cache, so they open fast": "Kopiowanie obrazów z tego folderu do lokalnej pamięci, aby otwierały się szybko",
+    "Network cache": "Pamięć podręczna sieci",
+    "Local copies of images from slow places (network shares over VPN, external disks): each file crosses the slow link once. Changed files are noticed by their size and date.": "Lokalne kopie obrazów z wolnych miejsc (udziały sieciowe przez VPN, dyski zewnętrzne): każdy plik przechodzi przez wolne łącze tylko raz. Zmienione pliki są rozpoznawane po rozmiarze i dacie.",
+    "Use the cache for": "Używaj pamięci dla",
+    "Network and removable drives": "Dysków sieciowych i wymiennych",
+    "All drives": "Wszystkich dysków",
+    "Nothing (off)": "Niczego (wyłączona)",
+    "Size limit (GB)": "Limit rozmiaru (GB)",
+    "Copy a slow folder's images in the background when it is opened": "Kopiuj w tle obrazy wolnego folderu po jego otwarciu",
+    "Caching {done} / {total}": "Kopiowanie do pamięci {done} / {total}",
+    "Folder cached": "Folder w pamięci podręcznej",
+    "Folder for the network cache": "Folder na pamięć podręczną sieci",
     "Folder does not exist yet: {path}": "Folder jeszcze nie istnieje: {path}",
 }
 

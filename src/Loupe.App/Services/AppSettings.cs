@@ -47,6 +47,16 @@ public sealed class AppSettings
     public static string RescanFile => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loupe", "rescan.json");
     public bool RescanHeaders { get; set; }
+
+    // Network cache: local copies of files from slow drives (VPN shares, external disks).
+    /// <summary>"off" | "network" (network shares and removable drives) | "all".</summary>
+    public string CacheMode { get; set; } = "network";
+    public int CacheLimitGb { get; set; } = 20;
+    /// <summary>Empty = %LOCALAPPDATA%\Loupe\FileCache.</summary>
+    public string CacheFolder { get; set; } = "";
+    /// <summary>Copy the images of a slow folder in the background when it is opened.</summary>
+    public bool CachePrefetch { get; set; } = true;
+    public string CacheRoot => string.IsNullOrWhiteSpace(CacheFolder) ? Path.Combine(DataFolder, "FileCache") : CacheFolder;
     /// <summary>Quick toolbar tool ids in order ("|" = separator); empty = the default set.</summary>
     public List<string> Toolbar { get; set; } = [];
 

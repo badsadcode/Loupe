@@ -33,14 +33,17 @@ public sealed class AppController
     public AppSettings Settings => _settings;
     public ImageRenderer Renderer { get; private set; }
     public ImageEditor Editor { get; private set; }
+    public FileCache Cache { get; private set; }
+    private CancellationTokenSource? _prefetch;
 
     public AppController(IWindowHost host, BridgeHost bridge)
     {
         _host = host;
         _bridge = bridge;
         Loc.Load(_settings.Language);
-        Renderer = new ImageRenderer(_settings.ThumbRoot);
-        Editor = new ImageEditor(new BackupStore(_settings.BackupRoot));
+        Cache = new FileCache(_settings.CacheRoot, (long)_settings.CacheLimitGb << 30, _settings.CacheMode);
+        Renderer = new ImageRenderer(_settings.ThumbRoot) { ReadSource = Cache.Read };
+        Editor = new ImageEditor(new BackupStore(_settings.BackupRoot)) { ReadSource = Cache.Read };
         Register();
     }
 
@@ -106,6 +109,11 @@ public sealed class AppController
             s.Workers = Math.Clamp(BridgeHost.Arg(args, "workers", s.Workers), 1, 16);
             s.DeleteEmptyParts = BridgeHost.Arg(args, "deleteEmptyParts", s.DeleteEmptyParts);
             s.ConfirmDeleteParts = BridgeHost.Arg(args, "confirmDeleteParts", s.ConfirmDeleteParts);
+            string mode = BridgeHost.Arg(args, "cacheMode", s.CacheMode);
+            if (mode is "off" or "network" or "all") s.CacheMode = Cache.Mode = mode;
+            s.CacheLimitGb = Math.Clamp(BridgeHost.Arg(args, "cacheLimitGb", s.CacheLimitGb), 1, 2000);
+            Cache.MaxBytes = (long)s.CacheLimitGb << 30;
+            s.CachePrefetch = BridgeHost.Arg(args, "cachePrefetch", s.CachePrefetch);
             s.Toolbar = BridgeHost.Arg(args, "toolbar", s.Toolbar).Where(x => x.Length is > 0 and < 40).Take(80).ToList();
             s.Save();
             return null;
@@ -206,8 +214,10 @@ public sealed class AppController
             string path = BridgeHost.Arg(args, "path", "");
             return await Task.Run(() =>
             {
-                var bytes = Io.Read(path);
-                var info = JpegMeta.Read(bytes);
+                // Only the start of the file: a 6 MB scan over VPN is not read just for its size and dpi.
+                JpegMeta.Info info;
+                try { info = JpegMeta.Read(Cache.ReadHead(path)); }
+                catch (TurboJpegException) { info = JpegMeta.Read(Cache.Read(path)); }
                 var fi = new FileInfo(path);
                 return new
                 {
@@ -396,12 +406,30 @@ public sealed class AppController
             return dlg.FileName;
         });
 
+        // ---- network cache: copy the images of a slow folder in the background
+        _bridge.On("cache.prefetch", args =>
+        {
+            _prefetch?.Cancel();
+            var paths = BridgeHost.Arg(args, "paths", new List<string>());
+            if (!_settings.CachePrefetch || paths.Count == 0 || !Cache.Applies(paths[0])) return false;
+            var cts = new CancellationTokenSource();
+            _prefetch = cts;
+            _ = Task.Run(() => Prefetch(paths, cts.Token));
+            return true;
+        });
+        _bridge.On("cache.stop", _ => { _prefetch?.Cancel(); return null; });
+
         // ---- storage
         _bridge.OnAsync("storage.info", async _ => await Task.Run(() =>
         {
             var (bf, bb) = Backups.Usage();
             var (tf, tb) = Renderer.Usage();
-            return new { backupRoot = Backups.Root, backupFiles = bf, backupBytes = bb, thumbRoot = Renderer.ThumbRoot, thumbFiles = tf, thumbBytes = tb };
+            var (cf, cb) = Cache.Usage();
+            return new
+            {
+                backupRoot = Backups.Root, backupFiles = bf, backupBytes = bb, thumbRoot = Renderer.ThumbRoot, thumbFiles = tf, thumbBytes = tb,
+                cacheRoot = Cache.Root, cacheFiles = cf, cacheBytes = cb,
+            };
         }));
         _bridge.OnAsync("storage.clearThumbs", async _ => { await Task.Run(Renderer.Clear); return null; });
         _bridge.On("storage.openBackups", _ => { Directory.CreateDirectory(Backups.Root); Shell.OpenFolder(Backups.Root); return null; });
@@ -413,13 +441,50 @@ public sealed class AppController
                 throw new BridgeException(Loc.T("Originals are still kept in the current folder. Restore or clear them first, then change the folder."));
             _settings.BackupFolder = dlg.FolderName;
             _settings.Save();
-            Editor = new ImageEditor(new BackupStore(_settings.BackupRoot));
+            Editor = new ImageEditor(new BackupStore(_settings.BackupRoot)) { ReadSource = Cache.Read };
             return _settings.BackupRoot;
+        });
+        _bridge.OnAsync("storage.clearCache", async _ => { _prefetch?.Cancel(); await Task.Run(Cache.Clear); return null; });
+        _bridge.On("storage.pickCacheFolder", _ =>
+        {
+            var dlg = new OpenFolderDialog { Title = Loc.T("Folder for the network cache") };
+            if (dlg.ShowDialog(_host.Window) != true) return null;
+            _prefetch?.Cancel();
+            _settings.CacheFolder = dlg.FolderName;
+            _settings.Save();
+            Cache = new FileCache(_settings.CacheRoot, (long)_settings.CacheLimitGb << 30, _settings.CacheMode);
+            Renderer.ReadSource = Cache.Read;
+            Editor.ReadSource = Cache.Read;
+            return Cache.Root;
         });
         _bridge.OnAsync("storage.clearBackups", async _ => { await Task.Run(Backups.Clear); return null; });
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>Background copy of a folder's images (two at a time; network links like a few parallel reads).</summary>
+    private async Task Prefetch(List<string> paths, CancellationToken ct)
+    {
+        int done = 0, copied = 0, total = paths.Count;
+        var last = DateTime.MinValue;
+        try
+        {
+            await Parallel.ForEachAsync(paths, new ParallelOptions { MaxDegreeOfParallelism = 2, CancellationToken = ct }, (p, token) =>
+            {
+                try { if (Cache.Warm(p, token)) Interlocked.Increment(ref copied); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+                int d = Interlocked.Increment(ref done);
+                if ((DateTime.UtcNow - last).TotalMilliseconds > 300 || d == total)
+                {
+                    last = DateTime.UtcNow;
+                    _bridge.Emit("cache.progress", new { done = d, total, running = d < total });
+                }
+                return ValueTask.CompletedTask;
+            });
+        }
+        catch (OperationCanceledException) { }
+        _bridge.Emit("cache.progress", new { done, total, running = false, copied });
+    }
 
     private IEnumerable<string> RescanRoots() =>
         _settings.Favorites.Concat(FolderScanner.Drives().Select(d => d.Path));

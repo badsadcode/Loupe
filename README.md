@@ -8,6 +8,10 @@ Striplight PRO engine (libjpeg-turbo + the Striplight tone methods).
 - **Browse** drives, external disks and network shares (pin the ones you use). Thumbnails are
   cached locally, decoded at reduced size straight from the JPEG, so big folders open fast.
   Thumbnail size or a fixed number of columns; Ctrl+wheel changes either.
+- **Network cache** for slow places (VPN shares, external disks): each file crosses the slow link
+  once, then thumbnails, viewer and saving read the local copy; a slow folder is copied in the
+  background when opened; size limit with least-recently-used clean-up; the info card reads only
+  the file header.
 - **View** with zoom / pan / 1:1, next / previous with read-ahead.
 - **Pop-out viewer** (Ctrl+P) for a second monitor: follows the image chosen in the main window
   (thumbnails or viewer) with the correction preview; F11 full screen; remembers its monitor.
