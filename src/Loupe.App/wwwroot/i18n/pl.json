@@ -576,5 +576,14 @@
  "Caching {done} / {total}": "Kopiowanie do pamięci {done} / {total}",
  "Folder cached": "Folder w pamięci podręcznej",
  "Folder for the network cache": "Folder na pamięć podręczną sieci",
+ "Context menu": "Menu kontekstowe",
+ "Right-click a thumbnail, a folder or the image in the viewer: Show in Explorer, Open and Copy path are always there; choose the tools below them and their order.": "Kliknij prawym przyciskiem miniaturę, folder lub obraz w przeglądarce: Pokaż w Eksploratorze, Otwórz i Kopiuj ścieżkę są zawsze dostępne; wybierz narzędzia pod nimi i ich kolejność.",
+ "Default menu": "Domyślne menu",
+ "Open": "Otwórz",
+ "Show in Explorer": "Pokaż w Eksploratorze",
+ "Pin in the folder tree": "Przypnij w drzewie folderów",
+ "Copy path": "Kopiuj ścieżkę",
+ "Copy name": "Kopiuj nazwę",
+ "Copied": "Skopiowano",
  "Folder does not exist yet: {path}": "Folder jeszcze nie istnieje: {path}"
 }

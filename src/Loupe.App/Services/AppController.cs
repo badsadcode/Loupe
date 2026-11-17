@@ -93,6 +93,7 @@ public sealed class AppController
             _host.ApplyTheme(BridgeHost.Arg(args, "dark", true), color);
             return null;
         });
+        _bridge.On("app.copyText", args => { Clipboard.SetText(BridgeHost.Arg(args, "text", "")); return null; });
         _bridge.On("app.jsError", args => { JsErrors.Add(BridgeHost.Arg(args, "message", "")); return null; });
         _bridge.On("app.selfTestResult", args => { OnSelfTestResult?.Invoke(args.Clone()); return null; });
         _bridge.On("settings.set", args =>
@@ -114,6 +115,7 @@ public sealed class AppController
             s.CacheLimitGb = Math.Clamp(BridgeHost.Arg(args, "cacheLimitGb", s.CacheLimitGb), 1, 2000);
             Cache.MaxBytes = (long)s.CacheLimitGb << 30;
             s.CachePrefetch = BridgeHost.Arg(args, "cachePrefetch", s.CachePrefetch);
+            s.ContextMenu = BridgeHost.Arg(args, "contextMenu", s.ContextMenu).Where(x => x.Length is > 0 and < 40).Take(80).ToList();
             s.Toolbar = BridgeHost.Arg(args, "toolbar", s.Toolbar).Where(x => x.Length is > 0 and < 40).Take(80).ToList();
             s.Save();
             return null;

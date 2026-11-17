@@ -59,6 +59,8 @@ public sealed class AppSettings
     public string CacheRoot => string.IsNullOrWhiteSpace(CacheFolder) ? Path.Combine(DataFolder, "FileCache") : CacheFolder;
     /// <summary>Quick toolbar tool ids in order ("|" = separator); empty = the default set.</summary>
     public List<string> Toolbar { get; set; } = [];
+    /// <summary>Right-click menu tools in order ("|" = separator); empty = the default set.</summary>
+    public List<string> ContextMenu { get; set; } = [];
 
     // Pop-out viewer (second monitor): position and size of the normal window, full screen, on top.
     public double? PopupLeft { get; set; }

@@ -1316,44 +1316,138 @@ function saveToolbar(list) {
   renderToolList();
 }
 
-/** Settings → Toolbar: every tool with a switch; shown tools can move up and down. */
-function renderToolList() {
-  const shown = toolbarIds();
-  const hidden = Object.keys(TOOLS).filter((id) => !shown.includes(id));
-  const arrows = `<button class="icon-btn" data-move="-1" title="${esc(t('Move up'))}">${icon('arrow-up', 13)}</button>
+/**
+ * Editor for a list of tools (Settings → Toolbar and Settings → Context menu): every tool with a
+ * switch; the shown ones can move up and down; separators can be added and removed.
+ */
+function toolEditor(listSel, getIds, save) {
+  const el = $(listSel);
+  const render = () => {
+    const shown = getIds();
+    const hidden = Object.keys(TOOLS).filter((id) => !shown.includes(id));
+    const arrows = `<button class="icon-btn" data-move="-1" title="${esc(t('Move up'))}">${icon('arrow-up', 13)}</button>
         <button class="icon-btn" data-move="1" title="${esc(t('Move down'))}">${icon('chevron-down', 13)}</button>`;
-  const row = (id, i, on) => id === '|'
-    ? `<div class="tool-row sep" data-i="${i}"><span class="lbl">— ${esc(t('separator'))} —</span>${arrows}
-        <button class="icon-btn" data-del title="${esc(t('Remove'))}">${icon('x', 13)}</button></div>`
-    : `<div class="tool-row" data-i="${on ? i : ''}" data-id="${id}">
-        <label class="switch"><input type="checkbox" ${on ? 'checked' : ''}><span></span></label>${icon(TOOLS[id].icon, 15)}
-        <span class="lbl">${esc(t(TOOLS[id].label))}</span>${on ? arrows : ''}</div>`;
-  $('#tool-list').innerHTML = shown.map((id, i) => row(id, i, true)).join('') + hidden.map((id) => row(id, -1, false)).join('');
+    const row = (id, i, on) => id === '|'
+      ? `<div class="tool-row sep" data-i="${i}"><span class="lbl">— ${esc(t('separator'))} —</span>${arrows}
+          <button class="icon-btn" data-del title="${esc(t('Remove'))}">${icon('x', 13)}</button></div>`
+      : `<div class="tool-row" data-i="${on ? i : ''}" data-id="${id}">
+          <label class="switch"><input type="checkbox" ${on ? 'checked' : ''}><span></span></label>${icon(TOOLS[id].icon, 15)}
+          <span class="lbl">${esc(t(TOOLS[id].label))}</span>${on ? arrows : ''}</div>`;
+    el.innerHTML = shown.map((id, i) => row(id, i, true)).join('') + hidden.map((id) => row(id, -1, false)).join('');
+  };
+  el.addEventListener('click', (e) => {
+    const r = e.target.closest('.tool-row');
+    if (!r || r.dataset.i === '') return;
+    const list = [...getIds()];
+    const i = Number(r.dataset.i);
+    const mv = e.target.closest('[data-move]');
+    if (mv) {
+      const j = i + Number(mv.dataset.move);
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      save(list);
+    } else if (e.target.closest('[data-del]')) {
+      list.splice(i, 1);
+      save(list);
+    }
+  });
+  el.addEventListener('change', (e) => {
+    const r = e.target.closest('.tool-row');
+    if (!r?.dataset.id) return;
+    const list = [...getIds()];
+    if (e.target.checked) list.push(r.dataset.id); else list.splice(list.indexOf(r.dataset.id), 1);
+    save(list);
+  });
+  return render;
 }
 
-$('#tool-list').addEventListener('click', (e) => {
-  const r = e.target.closest('.tool-row');
-  if (!r || r.dataset.i === '') return;
-  const list = [...toolbarIds()];
-  const i = Number(r.dataset.i);
-  const mv = e.target.closest('[data-move]');
-  if (mv) {
-    const j = i + Number(mv.dataset.move);
-    if (j < 0 || j >= list.length) return;
-    [list[i], list[j]] = [list[j], list[i]];
-    saveToolbar(list);
-  } else if (e.target.closest('[data-del]')) {
-    list.splice(i, 1);
-    saveToolbar(list);
+const renderToolList = toolEditor('#tool-list', () => toolbarIds(), (list) => saveToolbar(list));
+
+// ------------------------------------------------------------------ right-click menu
+
+const EDIT_TOOLS = new Set(['rotL', 'rotR', 'mirror', 'negative', 'darker', 'brighter', 'lessContrast', 'moreContrast', 'autoLevels', 'resetCorr']);
+const DEFAULT_MENU = ['rescan', 'rename', '|', 'rotL', 'rotR', 'autoLevels', 'before', '|', 'restore', 'popup'];
+const menuIds = () => (Array.isArray(state.settings.contextMenu) && state.settings.contextMenu.length ? state.settings.contextMenu : DEFAULT_MENU).filter((id) => id === '|' || TOOLS[id]);
+function saveMenu(list) {
+  state.settings.contextMenu = list;
+  saveSettings({ contextMenu: list });
+  renderMenuList();
+}
+const renderMenuList = toolEditor('#menu-list', () => menuIds(), (list) => saveMenu(list));
+
+let menuEl = null;
+function closeMenu() { menuEl?.remove(); menuEl = null; }
+
+/**
+ * Shows the menu for what was right-clicked: fixed items for it (Show in Explorer, Open, Copy
+ * path…) and then the user's own tools (Settings → Context menu).
+ */
+function showMenu(x, y, ctx) {
+  closeMenu();
+  const fixed = [];
+  const path = ctx.path;
+  if (ctx.kind === 'image') {
+    if (!ctx.inViewer) fixed.push({ icon: 'eye', label: t('Open'), run: () => openViewer(state.images.findIndex((it) => it.path === path)) });
+    fixed.push({ icon: 'external-link', label: t('Show in Explorer'), run: () => run('fs.show', { path }) });
+  } else {
+    fixed.push({ icon: 'folder-open', label: t('Open'), run: () => openFolder(path) });
+    fixed.push({ icon: 'external-link', label: t('Show in Explorer'), run: () => run('fs.show', { path }) });
+    const pinned = state.roots.favorites.some((f) => samePath(f.path, path));
+    fixed.push(pinned
+      ? { icon: 'pin-off', label: t('Unpin'), run: async () => { state.roots = await run('fs.favoriteRemove', { path }); renderTree(); } }
+      : { icon: 'pin', label: t('Pin in the folder tree'), run: async () => { state.roots = await run('fs.favoriteAdd', { path }); renderTree(); } });
+  }
+  fixed.push({ icon: 'copy', label: t('Copy path'), run: () => run('app.copyText', { text: path }).then(() => toast(t('Copied'), 'ok')) });
+  fixed.push({ icon: 'copy', label: t('Copy name'), run: () => run('app.copyText', { text: baseName(path) }).then(() => toast(t('Copied'), 'ok')) });
+
+  const own = ctx.kind === 'image' ? menuIds() : menuIds().filter((id) => ['rename', 'merge', 'sortFolders', 'rescanList', 'refresh', 'selectAll', '|'].includes(id));
+  menuEl = document.createElement('div');
+  menuEl.className = 'context-menu';
+  const html = fixed.map((f, i) => `<button data-fixed="${i}">${icon(f.icon, 15)}<span>${esc(f.label)}</span></button>`);
+  const tools = own.map((id) => (id === '|' ? '<div class="sep"></div>'
+    : `<button data-tool="${id}">${icon(TOOLS[id].icon, 15)}<span>${esc(t(TOOLS[id].label))}</span></button>`));
+  if (tools.length) html.push('<div class="sep"></div>', ...tools);
+  menuEl.innerHTML = html.join('').replace(/(<div class="sep"><\/div>)+$/,'').replace(/(<div class="sep"><\/div>){2,}/g, '<div class="sep"></div>');
+  document.body.append(menuEl);
+  const r = menuEl.getBoundingClientRect();
+  menuEl.style.left = `${Math.min(x, innerWidth - r.width - 6)}px`;
+  menuEl.style.top = `${Math.min(y, innerHeight - r.height - 6)}px`;
+  menuEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    closeMenu();
+    if (b.dataset.fixed) fixed[Number(b.dataset.fixed)].run();
+    else {
+      // Corrections chosen from a right-click work on what was clicked (own correction), not the whole folder.
+      if (EDIT_TOOLS.has(b.dataset.tool) && ctx.kind === 'image' && targetMode() !== 'sel') setTarget('sel');
+      TOOLS[b.dataset.tool].run();
+    }
+    setTimeout(paintQuickbar, 50);
+  });
+}
+
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('input, textarea, dialog')) return;
+  e.preventDefault();
+  const tile = e.target.closest('#grid .tile');
+  const node = e.target.closest('#tree .node');
+  if (tile) {
+    const i = Number(tile.dataset.i);
+    if (!state.selected.has(i)) selectIndex(i);       // the tools work on what was clicked
+    const it = state.items[i];
+    showMenu(e.clientX, e.clientY, { kind: it.type, path: it.path });
+  } else if (e.target.closest('#stage') && state.viewer) {
+    const it = state.images[state.vIndex];
+    if (it) showMenu(e.clientX, e.clientY, { kind: 'image', path: it.path, inViewer: true });
+  } else if (node) {
+    showMenu(e.clientX, e.clientY, { kind: 'folder', path: node.dataset.path });
+  } else if (e.target.closest('#grid-wrap') && state.path) {
+    showMenu(e.clientX, e.clientY, { kind: 'folder', path: state.path });
   }
 });
-$('#tool-list').addEventListener('change', (e) => {
-  const r = e.target.closest('.tool-row');
-  if (!r?.dataset.id) return;
-  const list = [...toolbarIds()];
-  if (e.target.checked) list.push(r.dataset.id); else list.splice(list.indexOf(r.dataset.id), 1);
-  saveToolbar(list);
-});
+document.addEventListener('pointerdown', (e) => { if (menuEl && !menuEl.contains(e.target)) closeMenu(); }, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuEl) { closeMenu(); e.stopImmediatePropagation(); } }, true);
+window.addEventListener('blur', closeMenu);
 
 // ------------------------------------------------------------------ pop-out viewer (second monitor)
 
@@ -1410,6 +1504,7 @@ async function openSettings() {
   $('#about').innerHTML = `Loupe ${esc(state.init?.version ?? '')} · ${esc(state.init?.turboJpeg ?? '')}<br>Bad Ideas Works · ${esc(t('built on the Striplight PRO engine'))}`;
   $$('.theme-card').forEach((c) => c.setAttribute('aria-checked', String(c.dataset.theme === document.documentElement.dataset.theme)));
   renderToolList();
+  renderMenuList();
   $('#settings-dlg').showModal();
   refreshStorage();
 }
@@ -1508,6 +1603,8 @@ const commands = {
   popup: togglePopup,
   toolbarSep: () => saveToolbar([...toolbarIds(), '|']),
   toolbarDefault: () => saveToolbar([...DEFAULT_TOOLBAR]),
+  menuSep: () => saveMenu([...menuIds(), '|']),
+  menuDefault: () => saveMenu([...DEFAULT_MENU]),
   resetSettings: async () => {
     if (!confirm(t('Reset all settings to their defaults? Pinned folders, the language and the rescan list stay.'))) return;
     state.settings = await run('settings.reset');
