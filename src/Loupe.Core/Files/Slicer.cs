@@ -17,7 +17,7 @@ public sealed record SliceSettings
 
     public double[] CutPositions()
     {
-        int parts = Math.Clamp(Parts, 2, 12);
+        int parts = Math.Clamp(Parts, 2, 20);
         var c = Cuts.Count == parts - 1 ? Cuts.Select(x => Math.Clamp(x, 0.02, 0.98)).OrderBy(x => x).ToArray()
                                         : Enumerable.Range(1, parts - 1).Select(i => (double)i / parts).ToArray();
         return c;
@@ -50,7 +50,7 @@ public static class Slicer
         string folder = Path.GetDirectoryName(Path.GetFullPath(sources[0]))!;
         if (sources.Any(p => !string.Equals(Path.GetDirectoryName(Path.GetFullPath(p)), folder, StringComparison.OrdinalIgnoreCase)))
             return Fail("All images to slice must be in the same folder.");
-        int parts = Math.Clamp(s.Parts, 2, 12);
+        int parts = Math.Clamp(s.Parts, 2, 20);
 
         var files = Directory.EnumerateFiles(folder).Where(FolderScanner.IsImage)
             .OrderBy(f => Path.GetFileName(f), NaturalComparer.Instance).ToList();

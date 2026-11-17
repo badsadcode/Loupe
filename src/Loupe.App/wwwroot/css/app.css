@@ -221,6 +221,23 @@ table.plan.rescan td.mono { font-family: var(--mono); color: var(--text-2); }
 .cut.h { height: 2px; margin-top: -1px; cursor: ns-resize; }
 .cut::after { content: ""; position: absolute; inset: -8px; }
 .part-tag { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #ff3b3b; color: #fff; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.quickbar { display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 8px; background: var(--surface-2); border-bottom: 1px solid var(--border); flex: none; overflow: hidden; }
+.quickbar .icon-btn { width: 32px; height: 32px; }
+.quickbar .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.quickbar .qsep { width: 1px; height: 20px; background: var(--border-2); margin: 0 5px; flex: none; }
+.quickbar:empty { display: none; }
+.browser.has-qb .viewer { top: 40px; }
+.browser.has-qb:has(.quickbar:empty) .viewer { top: 0; }
+.tool-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r); padding: 4px; }
+.tool-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; }
+.tool-row:hover { background: var(--surface-3); }
+.tool-row .icon { color: var(--text-2); }
+.tool-row .lbl { flex: 1; }
+.tool-row.sep .lbl { color: var(--text-3); font-style: italic; }
+.tool-row .icon-btn { width: 24px; height: 24px; }
+.tile .crop-mark { display: none; position: absolute; bottom: 30px; right: 7px; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #ff8000; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.grid.nonames .tile .crop-mark { bottom: 8px; }
+.tile.cropped .crop-mark { display: grid; }
 .empty-note { color: var(--text-3); padding: 20px 0; text-align: center; }
 .tile .badge { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .tile.folder .pic { background: transparent; color: var(--text-3); }

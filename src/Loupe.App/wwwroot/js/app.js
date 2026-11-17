@@ -362,7 +362,8 @@ function renderGrid() {
       tile.innerHTML = `<div class="pic"><img alt="" draggable="false"></div><div class="name" title="${esc(it.name)}">${esc(it.name)}</div>
         ${it.edited ? `<span class="badge" title="${esc(t('Edited — the original is kept'))}">${icon('pencil-line', 12)}</span>` : ''}
         <span class="own-dot" title="${esc(t('Own correction (not saved yet)'))}"></span>
-        <span class="flag" title="${esc(t('Marked for rescanning'))}">${icon('flag', 12)}</span>`;
+        <span class="flag" title="${esc(t('Marked for rescanning'))}">${icon('flag', 12)}</span>
+        <span class="crop-mark" title="${esc(t('Cropped (preview, not saved yet)'))}">${icon('crop', 12)}</span>`;
       tile.classList.toggle('rescan', !!it.rescan);
       const img = tile.querySelector('img');
       img.dataset.src = thumbUrl(it);
@@ -535,7 +536,7 @@ let tool = null;             // 'crop' | 'slice' | null
 const sliceCuts = { list: [0.5] };
 
 function sliceSettings() {
-  const parts = Number($('#slice-parts').value) || 2;
+  const parts = Math.max(2, Math.min(20, Math.round(Number($('#slice-parts').value) || 2)));
   if (sliceCuts.list.length !== parts - 1) sliceCuts.list = Array.from({ length: parts - 1 }, (_, i) => (i + 1) / parts);
   return { parts, vertical: $('#slice-dir').value === 'v', cuts: sliceCuts.list, reverse: $('#slice-reverse').checked };
 }
@@ -693,6 +694,7 @@ function controlsChanged() {
 }
 
 function previewsChanged() {
+  paintQuickbar();
   refreshThumbs();
   refreshView();
   refreshTarget();
@@ -759,6 +761,7 @@ function refreshTarget() {
   for (const tile of $$('#grid .tile.image')) {
     const it = state.items[Number(tile.dataset.i)];
     tile.classList.toggle('own', !!it && state.own.has(it.path));
+    tile.classList.toggle('cropped', !!it && hasCrop(effective(it)));
   }
 }
 
@@ -1146,6 +1149,114 @@ async function undo() {
   await openFolder(state.path);
 }
 
+// ------------------------------------------------------------------ quick toolbar (customizable)
+
+/** Every tool the quick toolbar can show. Settings → Toolbar picks which, and the order. */
+const TOOLS = {
+  rotL: { icon: 'rotate-ccw', label: 'Rotate left', run: () => rotate(-90) },
+  rotR: { icon: 'rotate-cw', label: 'Rotate right', run: () => rotate(90) },
+  mirror: { icon: 'flip-horizontal-2', label: 'Mirror', run: () => commands.mirror(), on: () => orient.mirror },
+  negative: { icon: 'contrast', label: 'Negative', run: () => commands.negative(), on: () => orient.negative },
+  darker: { icon: 'moon', label: 'Darker', run: () => nudge('brightness', -10) },
+  brighter: { icon: 'sun', label: 'Brighter', run: () => nudge('brightness', 10) },
+  lessContrast: { icon: 'circle-alert', label: 'Less contrast', run: () => nudge('contrast', -10) },
+  moreContrast: { icon: 'circle-check', label: 'More contrast', run: () => nudge('contrast', 10) },
+  autoLevels: { icon: 'wand-sparkles', label: 'Auto levels', run: () => { $('#tone-method').value = 5; applyRanges(5, true); controlsChanged(); } },
+  crop: { icon: 'crop', label: 'Crop tool (K)', run: () => setTool('crop'), on: () => tool === 'crop' },
+  cutLines: { icon: 'scissors', label: 'Cut lines (L)', run: () => setTool('slice'), on: () => tool === 'slice' },
+  slice: { icon: 'square-split-horizontal', label: 'Slice…', run: () => openSlice() },
+  rescan: { icon: 'flag', label: 'Mark for rescanning (Ctrl+R)', run: () => toggleRescan() },
+  before: { icon: 'eye', label: 'Before (B)', run: () => setBefore(!state.before), on: () => state.before },
+  resetCorr: { icon: 'rotate-ccw', label: 'Reset correction', run: () => resetCorrection() },
+  save: { icon: 'save', label: 'Save changes (Ctrl+S)', run: () => saveChanges() },
+  restore: { icon: 'history', label: 'Restore original', run: () => restoreOriginals() },
+  undo: { icon: 'undo-2', label: 'Undo rename / merge / slice (Ctrl+Z)', run: () => undo() },
+  rename: { icon: 'text-cursor-input', label: 'Rename (F2)', run: () => openRename() },
+  merge: { icon: 'merge', label: 'Merge parts', run: () => openMerge() },
+  rescanList: { icon: 'clipboard-list', label: 'Rescan list', run: () => openRescan() },
+  selectAll: { icon: 'list-checks', label: 'Select all (Ctrl+A)', run: () => commands.selectAll() },
+  zoomIn: { icon: 'zoom-in', label: 'Zoom in', run: () => (state.viewer ? viewer.zoomBy(1.25) : zoomGrid(true)) },
+  zoomOut: { icon: 'zoom-out', label: 'Zoom out', run: () => (state.viewer ? viewer.zoomBy(1 / 1.25) : zoomGrid(false)) },
+  fit: { icon: 'maximize', label: 'Fit (0)', run: () => state.viewer && viewer.fit() },
+  refresh: { icon: 'refresh-cw', label: 'Refresh (F5)', run: () => commands.refresh() },
+};
+const DEFAULT_TOOLBAR = ['rotL', 'rotR', 'mirror', 'negative', '|', 'darker', 'brighter', 'autoLevels', '|', 'crop', 'cutLines', 'slice', '|', 'rescan', 'before', '|', 'save', 'restore', 'undo'];
+
+function nudge(key, d) {
+  const [r] = sliderInputs(slider(key));
+  setSlider(key, Math.max(Number(r.min), Math.min(Number(r.max), getSlider(key) + d)));
+  controlsChanged();
+}
+
+const toolbarIds = () => (Array.isArray(state.settings.toolbar) && state.settings.toolbar.length ? state.settings.toolbar : DEFAULT_TOOLBAR).filter((id) => id === '|' || TOOLS[id]);
+
+function renderQuickbar() {
+  $('#quickbar').innerHTML = toolbarIds().map((id) => (id === '|'
+    ? '<span class="qsep"></span>'
+    : `<button class="icon-btn" data-tool="${id}" title="${esc(t(TOOLS[id].label))}">${icon(TOOLS[id].icon, 17)}</button>`)).join('');
+  paintQuickbar();
+}
+
+function paintQuickbar() {
+  for (const b of $$('#quickbar [data-tool]')) {
+    const tl = TOOLS[b.dataset.tool];
+    if (tl.on) b.setAttribute('aria-pressed', String(!!tl.on()));
+  }
+}
+
+$('#quickbar').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tool]');
+  if (!b) return;
+  TOOLS[b.dataset.tool].run();
+  setTimeout(paintQuickbar, 50);
+});
+
+function saveToolbar(list) {
+  state.settings.toolbar = list;
+  saveSettings({ toolbar: list });
+  renderQuickbar();
+  renderToolList();
+}
+
+/** Settings → Toolbar: every tool with a switch; shown tools can move up and down. */
+function renderToolList() {
+  const shown = toolbarIds();
+  const hidden = Object.keys(TOOLS).filter((id) => !shown.includes(id));
+  const arrows = `<button class="icon-btn" data-move="-1" title="${esc(t('Move up'))}">${icon('arrow-up', 13)}</button>
+        <button class="icon-btn" data-move="1" title="${esc(t('Move down'))}">${icon('chevron-down', 13)}</button>`;
+  const row = (id, i, on) => id === '|'
+    ? `<div class="tool-row sep" data-i="${i}"><span class="lbl">— ${esc(t('separator'))} —</span>${arrows}
+        <button class="icon-btn" data-del title="${esc(t('Remove'))}">${icon('x', 13)}</button></div>`
+    : `<div class="tool-row" data-i="${on ? i : ''}" data-id="${id}">
+        <label class="switch"><input type="checkbox" ${on ? 'checked' : ''}><span></span></label>${icon(TOOLS[id].icon, 15)}
+        <span class="lbl">${esc(t(TOOLS[id].label))}</span>${on ? arrows : ''}</div>`;
+  $('#tool-list').innerHTML = shown.map((id, i) => row(id, i, true)).join('') + hidden.map((id) => row(id, -1, false)).join('');
+}
+
+$('#tool-list').addEventListener('click', (e) => {
+  const r = e.target.closest('.tool-row');
+  if (!r || r.dataset.i === '') return;
+  const list = [...toolbarIds()];
+  const i = Number(r.dataset.i);
+  const mv = e.target.closest('[data-move]');
+  if (mv) {
+    const j = i + Number(mv.dataset.move);
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    saveToolbar(list);
+  } else if (e.target.closest('[data-del]')) {
+    list.splice(i, 1);
+    saveToolbar(list);
+  }
+});
+$('#tool-list').addEventListener('change', (e) => {
+  const r = e.target.closest('.tool-row');
+  if (!r?.dataset.id) return;
+  const list = [...toolbarIds()];
+  if (e.target.checked) list.push(r.dataset.id); else list.splice(list.indexOf(r.dataset.id), 1);
+  saveToolbar(list);
+});
+
 // ------------------------------------------------------------------ settings dialog
 
 async function openSettings() {
@@ -1156,6 +1267,7 @@ async function openSettings() {
   $('#set-workers').value = s.workers ?? 4;
   $('#about').innerHTML = `Loupe ${esc(state.init?.version ?? '')} · ${esc(state.init?.turboJpeg ?? '')}<br>Bad Ideas Works · ${esc(t('built on the Striplight PRO engine'))}`;
   $$('.theme-card').forEach((c) => c.setAttribute('aria-checked', String(c.dataset.theme === document.documentElement.dataset.theme)));
+  renderToolList();
   $('#settings-dlg').showModal();
   refreshStorage();
 }
@@ -1229,6 +1341,24 @@ const commands = {
   negative: () => { orient.negative = !orient.negative; paintOrient(); controlsChanged(); },
   apply: saveChanges,
   rescanToggle: toggleRescan,
+  toolbarSep: () => saveToolbar([...toolbarIds(), '|']),
+  toolbarDefault: () => saveToolbar([...DEFAULT_TOOLBAR]),
+  resetSettings: async () => {
+    if (!confirm(t('Reset all settings to their defaults? Pinned folders, the language and the rescan list stay.'))) return;
+    state.settings = await run('settings.reset');
+    applyTheme(state.settings.theme);
+    applyViewBg(state.settings.viewBackground);
+    applyGridLayout(true);
+    $('#show-names').checked = state.settings.showNames;
+    $('#grid').classList.toggle('nonames', !state.settings.showNames);
+    document.documentElement.style.setProperty('--tree-w', `${state.settings.treeWidth}px`);
+    $('#slice-parts').value = 2; $('#slice-dir').value = 'v'; $('#slice-reverse').checked = false; paintSlice();
+    discardChanges();
+    renderQuickbar();
+    $('#settings-dlg').close();
+    openSettings();
+    toast(t('All settings are back to their defaults.'), 'ok');
+  },
   cropTool: () => setTool('crop'),
   cropClear: () => { for (const k of 'ltrb') $(`#crop-${k}`).value = 0; overlay.setCrop({ l: 0, t: 0, r: 0, b: 0 }); controlsChanged(); },
   sliceTool: () => setTool('slice'),
@@ -1354,6 +1484,7 @@ $$('#crop-l, #crop-t, #crop-r, #crop-b').forEach((el) => el.addEventListener('ch
   controlsChanged();
 }));
 $$('#slice-parts, #slice-dir, #slice-reverse').forEach((el) => el.addEventListener('change', paintSlice));
+$('#slice-parts').addEventListener('input', paintSlice);
 $$('#tone-flags input, #sharp-mode').forEach((el) => el.addEventListener('change', controlsChanged));
 $('#target').addEventListener('change', () => setTarget($('#target').value));
 
@@ -1424,6 +1555,7 @@ async function start() {
   $('#show-names').checked = init.settings.showNames ?? true;
   $('#grid').classList.toggle('nonames', !$('#show-names').checked);
   loadControls(state.global);
+  renderQuickbar();
   setUndo(init.undo);
 
   state.roots = await call('fs.roots');

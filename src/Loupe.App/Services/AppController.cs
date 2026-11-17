@@ -106,8 +106,23 @@ public sealed class AppController
             s.Workers = Math.Clamp(BridgeHost.Arg(args, "workers", s.Workers), 1, 16);
             s.DeleteEmptyParts = BridgeHost.Arg(args, "deleteEmptyParts", s.DeleteEmptyParts);
             s.ConfirmDeleteParts = BridgeHost.Arg(args, "confirmDeleteParts", s.ConfirmDeleteParts);
+            s.Toolbar = BridgeHost.Arg(args, "toolbar", s.Toolbar).Where(x => x.Length is > 0 and < 40).Take(80).ToList();
             s.Save();
             return null;
+        });
+
+        // Back to the defaults; pinned folders, language, last folder and the folders for
+        // originals / thumbnails stay (moving those has its own rules).
+        _bridge.On("settings.reset", _ =>
+        {
+            var fresh = new AppSettings
+            {
+                Language = _settings.Language, Favorites = _settings.Favorites, LastFolder = _settings.LastFolder,
+                BackupFolder = _settings.BackupFolder, ThumbFolder = _settings.ThumbFolder,
+            };
+            foreach (var p in typeof(AppSettings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
+            _settings.Save();
+            return _settings;
         });
 
         // ---- browsing

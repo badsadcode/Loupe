@@ -36,7 +36,8 @@
     </aside>
     <div class="splitter" id="splitter" title="Drag to resize"></div>
 
-    <section class="browser" id="browser">
+    <section class="browser has-qb" id="browser">
+      <div class="quickbar" id="quickbar" data-no-i18n></div>
       <div class="toolbar">
         <button class="icon-btn" data-cmd="up" title="Up one folder (Backspace)"><i data-icon="arrow-up"></i></button>
         <button class="icon-btn" data-cmd="refresh" title="Refresh (F5)"><i data-icon="refresh-cw"></i></button>
@@ -155,7 +156,7 @@
           <h3>Slice</h3>
           <div class="field-grid two">
             <label class="field">Pieces
-              <select id="slice-parts"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+              <input type="number" id="slice-parts" min="2" max="20" value="2">
             </label>
             <label class="field">Cut
               <select id="slice-dir"><option value="v">Side by side (pages)</option><option value="h">One above the other</option></select>
@@ -360,6 +361,20 @@
         <h3>Thumbnail cache</h3>
         <div class="path-row"><code id="st-thumb-path" data-no-i18n></code><span class="chip" id="st-thumb-size" data-no-i18n></span></div>
         <div class="btn-row"><button class="btn" data-cmd="clearThumbs"><i data-icon="trash-2"></i>Clear cache</button></div>
+      </div>
+      <div class="section">
+        <h3>Toolbar</h3>
+        <p class="hint">Choose the tools in the quick toolbar above the thumbnails and the viewer, and their order.</p>
+        <div class="tool-list" id="tool-list"></div>
+        <div class="btn-row wrap">
+          <button class="btn" data-cmd="toolbarSep"><i data-icon="grid-2x2"></i>Add separator</button>
+          <button class="btn btn-ghost" data-cmd="toolbarDefault"><i data-icon="rotate-ccw"></i>Default toolbar</button>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Reset</h3>
+        <p class="hint">Theme, background, thumbnails, toolbar, saving and rename settings go back to how Loupe started. Pinned folders, the language and the rescan list stay.</p>
+        <div class="btn-row"><button class="btn btn-danger" data-cmd="resetSettings"><i data-icon="rotate-ccw"></i>Reset all settings to defaults</button></div>
       </div>
       <div class="section about" id="about" data-no-i18n></div>
     </div>

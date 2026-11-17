@@ -47,6 +47,8 @@ public sealed class AppSettings
     public static string RescanFile => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loupe", "rescan.json");
     public bool RescanHeaders { get; set; }
+    /// <summary>Quick toolbar tool ids in order ("|" = separator); empty = the default set.</summary>
+    public List<string> Toolbar { get; set; } = [];
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loupe", "settings.json");
