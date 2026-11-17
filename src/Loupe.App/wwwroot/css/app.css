@@ -179,8 +179,10 @@ input[type="range"]::-webkit-slider-thumb {
 .tile:hover { background: var(--surface-2); }
 .tile.sel { background: var(--accent-soft); border-color: var(--accent-ring); }
 .tile.focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.tile .pic { display: grid; place-items: center; aspect-ratio: var(--pic-aspect, 1); border-radius: 4px; background: var(--thumb-bg); overflow: hidden; }
-.tile .pic img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0; transition: opacity .15s; }
+.tile .pic { position: relative; display: grid; place-items: center; aspect-ratio: var(--pic-aspect, 1); min-height: 0; border-radius: 4px; background: var(--thumb-bg); overflow: hidden; }
+/* The image is pinned to the tile (absolute), so its own size can never stretch the tile's grid row:
+   large thumbnails on high-DPI screens used to make the tile taller than its frame and get cut off. */
+.tile .pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0; transition: opacity .15s; }
 .tile .pic img.ok { opacity: 1; }
 .tile .pic.err::after { content: "!"; color: var(--danger); font-weight: 700; font-size: 20px; }
 .tile .name { font-size: 11.5px; line-height: 1.3; color: var(--text-2); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
