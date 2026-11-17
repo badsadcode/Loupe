@@ -267,6 +267,34 @@ public sealed class AppController
             return new { title = log.Title, next = LastUndo()?.Title, folder = log.Moves.Count > 0 ? Path.GetDirectoryName(log.Moves[0].From) : null };
         });
 
+        // ---- slice (cut into pieces, renumber the folder)
+        _bridge.OnAsync("slice.plan", async args =>
+        {
+            var paths = BridgeHost.Arg(args, "paths", new List<string>());
+            var s = BridgeHost.Arg(args, "settings", new SliceSettings());
+            return SliceDto(await Task.Run(() => Slicer.Plan(paths, s)));
+        });
+        _bridge.OnAsync("slice.run", async args =>
+        {
+            var paths = BridgeHost.Arg(args, "paths", new List<string>());
+            var s = BridgeHost.Arg(args, "settings", new SliceSettings());
+            if (_job is not null) throw new BridgeException(Loc.T("Another job is still running."));
+            return await Task.Run(() =>
+            {
+                var plan = Slicer.Plan(paths, s);
+                if (!plan.CanRun) throw new BridgeException(plan.Error ?? string.Join(" ", plan.Problems));
+                string keep = Path.Combine(AppSettings.UndoRoot, $"slice-{DateTime.Now:yyyyMMdd-HHmmss-fff}");
+                var log = Slicer.Run(plan, s, keep, Backups, _settings.SaveQuality) with
+                {
+                    Title = Loc.T("Slice of {n} images", ("n", plan.Sources.Count)),
+                };
+                _rescan.Follow(log.Moves.Where(m => !Path.GetFileName(m.From).StartsWith(".loupe-"))
+                    .Concat(plan.Sources.Select(src => new MovePair(src, plan.Outputs.First(o => o.Source == src).Target))));
+                SaveUndo(log);
+                return new { outputs = plan.Outputs.Count, undo = log.Title };
+            });
+        });
+
         // ---- rescan list (images beyond repair)
         _bridge.On("rescan.list", _ => RescanDto());
         _bridge.On("rescan.set", args =>
@@ -353,6 +381,21 @@ public sealed class AppController
         drives = FolderScanner.Drives(),
         favorites = _settings.Favorites.Select(f => new { name = Path.GetFileName(f.TrimEnd('\\', '/')) is { Length: > 0 } n ? n : f, path = f, exists = Directory.Exists(f) }),
     };
+
+    private static object SliceDto(SlicePlan p)
+    {
+        if (p.Error is not null) return new { error = p.Error, canRun = false };
+        var rows = new List<object>();
+        var pieces = p.Outputs.Select(o => new { from = Path.GetFileName(o.Source) + $" [{o.Part + 1}]", to = Path.GetFileName(o.Target), piece = true });
+        var renamed = p.Renames.Select(m => new { from = Path.GetFileName(m.From), to = Path.GetFileName(m.To), piece = false });
+        var all = pieces.Concat(renamed).OrderBy(r => r.to, NaturalComparer.Instance).ToList();
+        foreach (var r in all.Count <= 14 ? all : all.Take(10).Append(new { from = "…", to = "…", piece = false }).Concat(all.TakeLast(3))) rows.Add(r);
+        return new
+        {
+            error = (string?)null, canRun = p.CanRun, p.Problems, sources = p.Sources.Count, outputs = p.Outputs.Count,
+            renames = p.Renames.Count, files = p.Files, after = p.Files + p.Outputs.Count - p.Sources.Count, sample = rows,
+        };
+    }
 
     private static object MergeDto(MergePlan plan) => new
     {

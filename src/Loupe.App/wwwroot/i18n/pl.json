@@ -416,5 +416,65 @@
  "Remove every image from the rescan list?": "Usunąć wszystkie obrazy z listy do ponownego skanu?",
  "Save the rescan list": "Zapisz listę do ponownego skanu",
  "CSV for Excel": "CSV dla Excela",
+ "Crop": "Kadrowanie",
+ "Left %": "Lewo %",
+ "Top %": "Góra %",
+ "Right %": "Prawo %",
+ "Bottom %": "Dół %",
+ "Draw the crop on the image in the viewer (K)": "Narysuj kadr na obrazie w przeglądarce (K)",
+ "Draw in viewer": "Rysuj na obrazie",
+ "No crop": "Bez kadrowania",
+ "Clear": "Wyczyść",
+ "Part of the correction: global for the folder or own for single images, like the tone.": "Część poprawki: globalna dla folderu albo własna dla pojedynczych obrazów, jak tonacja.",
+ "Slice": "Dzielenie",
+ "Pieces": "Części",
+ "Cut": "Cięcie",
+ "Side by side (pages)": "Obok siebie (strony)",
+ "One above the other": "Jedna nad drugą",
+ "Number from the right (right page first)": "Numeruj od prawej (najpierw prawa strona)",
+ "Show and move the cut lines in the viewer (L)": "Pokaż i przesuwaj linie cięcia w przeglądarce (L)",
+ "Cut lines": "Linie cięcia",
+ "Cut the selected images (or the one in the viewer) and renumber the folder": "Podziel zaznaczone obrazy (lub ten w przeglądarce) i przenumeruj folder",
+ "Slice…": "Podziel…",
+ "The pieces get the following numbers and the later files move up, so the numbering stays continuous. Nothing is overwritten; Undo puts everything back.": "Części dostają kolejne numery, a dalsze pliki przesuwają się w górę, więc numeracja pozostaje ciągła. Nic nie zostanie nadpisane; Cofnij przywraca wszystko.",
+ "Crop tool / cut lines": "Kadrowanie / linie cięcia",
+ "Open an image first.": "Najpierw otwórz obraz.",
+ "Select the images to slice.": "Zaznacz obrazy do podzielenia.",
+ "These images have corrections that are not saved yet. Save them first?": "Te obrazy mają niezapisane poprawki. Zapisać je najpierw?",
+ "image to cut": {
+  "one": "obraz do podzielenia",
+  "few": "obrazy do podzielenia",
+  "many": "obrazów do podzielenia",
+  "other": "obrazów do podzielenia"
+ },
+ "images to cut": {
+  "one": "obraz do podzielenia",
+  "few": "obrazy do podzielenia",
+  "many": "obrazów do podzielenia",
+  "other": "obrazów do podzielenia"
+ },
+ "new files": {
+  "one": "nowy plik",
+  "few": "nowe pliki",
+  "many": "nowych plików",
+  "other": "nowych plików"
+ },
+ "files renumbered": {
+  "one": "plik przenumerowany",
+  "few": "pliki przenumerowane",
+  "many": "plików przenumerowanych",
+  "other": "plików przenumerowanych"
+ },
+ "files in the folder": "plików w folderze",
+ "Sliced into {n} files": {
+  "one": "Podzielono na {n} plik",
+  "few": "Podzielono na {n} pliki",
+  "many": "Podzielono na {n} plików",
+  "other": "Podzielono na {n} plików"
+ },
+ "Slice of {n} images": "Podział obrazów: {n}",
+ "All images to slice must be in the same folder.": "Wszystkie obrazy do podzielenia muszą być w tym samym folderze.",
+ "Some file names in this folder do not end with a number, so the folder cannot be renumbered.": "Niektóre nazwy plików w tym folderze nie kończą się numerem, więc folderu nie można przenumerować.",
+ "The file names in this folder do not all start the same way, so the folder cannot be renumbered.": "Nazwy plików w tym folderze nie zaczynają się tak samo, więc folderu nie można przenumerować.",
  "Folder does not exist yet: {path}": "Folder jeszcze nie istnieje: {path}"
 }

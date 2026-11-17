@@ -135,7 +135,7 @@ public sealed class ImageEditor(BackupStore backups)
     /// <summary>The new file contents for <paramref name="original"/> with <paramref name="edit"/> applied.</summary>
     public static (byte[] Bytes, bool Lossless, int Quality) Render(byte[] original, EditSettings edit, SaveOptions save)
     {
-        if (edit.IsPixelNoOp && save.LosslessWhenPossible)
+        if (edit.IsPixelNoOp && !edit.HasCrop && save.LosslessWhenPossible)
         {
             var t = TurboJpeg.TransformLossless(original, TurboJpeg.TransformOp(edit.NormalRotation, edit.Mirror));
             if (t is not null) return (t, true, 0);

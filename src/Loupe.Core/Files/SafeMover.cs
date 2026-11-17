@@ -14,6 +14,10 @@ public sealed record UndoLog
     public List<MovePair> Moves { get; init; } = [];
     public List<string> CreatedFolders { get; init; } = [];
     public List<string> DeletedFolders { get; init; } = [];
+    /// <summary>Slice: files created by the job, removed again on undo (after the moves are reversed).</summary>
+    public List<string> RemoveOnUndo { get; init; } = [];
+    /// <summary>Slice: originals put aside (From = where they are kept, To = where they go back).</summary>
+    public List<MovePair> RestoreOnUndo { get; init; } = [];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -96,6 +100,14 @@ public static class SafeMover
     {
         foreach (var d in log.DeletedFolders) Directory.CreateDirectory(d);
         Run(log.Moves.Select(m => new MovePair(m.To, m.From)).ToList(), backups);
+        foreach (var f in log.RemoveOnUndo) if (File.Exists(f)) File.Delete(f);
+        foreach (var r in log.RestoreOnUndo)
+        {
+            if (!File.Exists(r.From)) continue;
+            if (File.Exists(r.To)) throw new IOException($"File already exists: {r.To}");
+            Directory.CreateDirectory(Path.GetDirectoryName(r.To)!);
+            File.Move(r.From, r.To);
+        }
         foreach (var d in log.CreatedFolders.OrderByDescending(x => x.Length))
             if (Directory.Exists(d) && !Directory.EnumerateFileSystemEntries(d).Any()) Directory.Delete(d);
     }

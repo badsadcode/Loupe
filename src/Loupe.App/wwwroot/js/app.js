@@ -4,6 +4,7 @@ import { initI18n, t, tn, currentLanguage } from './i18n.js';
 import { hydrateIcons, icon } from './icons.js';
 import { initSegmented, initRanges, paintRange } from './ui.js';
 import { Viewer } from './viewer.js';
+import { Overlay } from './overlay.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -456,7 +457,11 @@ let viewToken = 0;
 function viewUrl(it, { full = false, edit = true } = {}) {
   const r = $('#stage').getBoundingClientRect();
   const max = full ? 0 : Math.ceil(Math.max(r.width, r.height, 800) * (window.devicePixelRatio || 1));
-  const e = edit && !state.before ? editJson(effective(it)) : '';
+  let e = '';
+  if (edit && !state.before && tool !== 'slice') {
+    const eff = effective(it);
+    e = editJson(tool === 'crop' ? { ...eff, cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0 } : eff);
+  }
   return `${IMG}/view?p=${encodeURIComponent(it.path)}&max=${max}&v=${it.modified}${e ? `&e=${encodeURIComponent(e)}` : ''}`;
 }
 
@@ -468,6 +473,7 @@ function openViewer(index) {
 }
 
 function closeViewer() {
+  if (tool) { tool = null; overlay.setMode(null); $('#crop-tool').setAttribute('aria-pressed', 'false'); $('#slice-tool').setAttribute('aria-pressed', 'false'); }
   state.viewer = false;
   $('#viewer').hidden = true;
   const it = state.images[state.vIndex];
@@ -505,13 +511,52 @@ async function showImage(index, { keepView = false } = {}) {
     let info = state.info?.path === it.path ? state.info : null;
     if (!info) { try { info = await call('img.info', { path: it.path }); } catch { info = null; } }
     if (token !== viewToken) return;
-    const long = info ? Math.max(info.width, info.height) : Math.max(probe.naturalWidth, probe.naturalHeight);
+    const long = info ? fileLongSide(info, it) : Math.max(probe.naturalWidth, probe.naturalHeight);
     const k = long / Math.max(probe.naturalWidth, probe.naturalHeight);
     viewer.setFileSize(Math.round(probe.naturalWidth * k), Math.round(probe.naturalHeight * k), keepView && !changed);
     prefetch(index);
   };
   probe.onerror = () => { if (token === viewToken) { $('#v-loading').hidden = true; toast(t('Could not open {name}', { name: it.name }), 'error'); } };
   probe.src = url;
+}
+
+/** Long side of the image as shown (after orientation and, outside the crop tool, after the crop). */
+function fileLongSide(info, it) {
+  const e = state.before || tool === 'slice' ? NEUTRAL : effective(it);
+  let w = info.width, h = info.height;
+  if (e.rotation === 90 || e.rotation === 270) [w, h] = [h, w];
+  if (tool !== 'crop' && hasCrop(e)) { w *= 1 - e.cropLeft - e.cropRight; h *= 1 - e.cropTop - e.cropBottom; }
+  return Math.max(w, h);
+}
+
+// ---- crop and slice tools in the viewer
+let overlay = null;
+let tool = null;             // 'crop' | 'slice' | null
+const sliceCuts = { list: [0.5] };
+
+function sliceSettings() {
+  const parts = Number($('#slice-parts').value) || 2;
+  if (sliceCuts.list.length !== parts - 1) sliceCuts.list = Array.from({ length: parts - 1 }, (_, i) => (i + 1) / parts);
+  return { parts, vertical: $('#slice-dir').value === 'v', cuts: sliceCuts.list, reverse: $('#slice-reverse').checked };
+}
+
+function setTool(which) {
+  if (which && !state.viewer) {
+    const it = focusItem();
+    if (it?.type !== 'image') { toast(t('Open an image first.')); return; }
+    openViewer(state.images.indexOf(it));
+  }
+  tool = tool === which ? null : which;
+  $('#crop-tool').setAttribute('aria-pressed', String(tool === 'crop'));
+  $('#slice-tool').setAttribute('aria-pressed', String(tool === 'slice'));
+  if (tool === 'slice') { const s = sliceSettings(); overlay.setCuts(s.cuts, s.vertical, s.reverse); }
+  overlay.setMode(tool);
+  if (state.viewer) showImage(state.vIndex, { keepView: false });
+}
+
+function paintSlice() {
+  const s = sliceSettings();
+  overlay?.setCuts(s.cuts, s.vertical, s.reverse);
 }
 
 function prefetch(index) {
@@ -530,6 +575,7 @@ function step(d) {
 const refreshView = debounce(() => { if (state.viewer) showImage(state.vIndex, { keepView: true }); }, 120);
 
 function onViewChange(v) {
+  overlay?.layout();
   $('#v-zoom').textContent = `${Math.round(v.scale * 100)}%`;
   if (v.needFull && !wantFull) { wantFull = true; refreshView(); }
 }
@@ -544,7 +590,7 @@ const QUANTUM = { contrast: [-128, 255, 64], brightness: [-128, 127, 0], gamma: 
 const STRIPLIGHT = { contrast: [-100, 100, 0], brightness: [-100, 100, 0], gamma: [10, 300, 100] };
 const isQuantum = (m) => m === 1 || m === 4;
 const isAdaptive = (m) => m >= 5 && m <= 8;
-const NEUTRAL = Object.freeze({ method: 0, flags: 0, contrast: 0, brightness: 0, gamma: 100, strength: 50, sharpenMode: 1, sharpen: 0, negative: false, rotation: 0, mirror: false });
+const NEUTRAL = Object.freeze({ method: 0, flags: 0, contrast: 0, brightness: 0, gamma: 100, strength: 50, sharpenMode: 1, sharpen: 0, negative: false, rotation: 0, mirror: false, cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0 });
 const orient = { rotation: 0, mirror: false, negative: false };
 state.global = { ...NEUTRAL };
 state.own = new Map();        // path → own correction (not saved yet)
@@ -582,7 +628,18 @@ function gatherEdit() {
     negative: orient.negative,
     rotation: orient.rotation,
     mirror: orient.mirror,
+    cropLeft: cropInput('l'),
+    cropTop: cropInput('t'),
+    cropRight: cropInput('r'),
+    cropBottom: cropInput('b'),
   };
+}
+
+const cropInput = (k) => Math.max(0, Math.min(95, Number($(`#crop-${k}`).value) || 0)) / 100;
+const hasCrop = (e) => e.cropLeft > 0.0005 || e.cropTop > 0.0005 || e.cropRight > 0.0005 || e.cropBottom > 0.0005;
+function setCropInputs(e) {
+  for (const [k, f] of [['l', 'cropLeft'], ['t', 'cropTop'], ['r', 'cropRight'], ['b', 'cropBottom']])
+    $(`#crop-${k}`).value = +((e[f] || 0) * 100).toFixed(2);
 }
 
 /** Shows a correction in the panel (without treating it as a change). */
@@ -598,6 +655,8 @@ function loadControls(e) {
   $('#sharp-mode').value = e.sharpenMode;
   $$('#tone-flags input').forEach((c) => { c.checked = (e.flags & Number(c.value)) !== 0; });
   Object.assign(orient, { rotation: e.rotation, mirror: e.mirror, negative: e.negative });
+  setCropInputs(e);
+  overlay?.setCrop({ l: e.cropLeft || 0, t: e.cropTop || 0, r: e.cropRight || 0, b: e.cropBottom || 0 });
   paintOrient();
   loadingControls = false;
 }
@@ -610,7 +669,7 @@ function toneIsNoOp(e) {
   if (e.method >= 6) return e.strength <= 0 && e.contrast === 0 && e.brightness === 0 && e.gamma === 100;
   return e.contrast === 0 && e.brightness === 0 && e.gamma === 100;
 }
-const isNeutral = (e) => toneIsNoOp(e) && e.sharpen <= 0 && !e.negative && e.rotation === 0 && !e.mirror;
+const isNeutral = (e) => toneIsNoOp(e) && e.sharpen <= 0 && !e.negative && e.rotation === 0 && !e.mirror && !hasCrop(e);
 const effective = (it) => state.own.get(it.path) ?? state.global;
 const editJson = (e) => (e && !isNeutral(e) ? JSON.stringify(e) : '');
 
@@ -949,6 +1008,52 @@ $('#mg-run').addEventListener('click', async () => {
   } catch { planMerge(); }
 });
 
+// ------------------------------------------------------------------ slice dialog
+
+let slicePaths = [];
+
+async function openSlice() {
+  const its = state.viewer ? [state.images[state.vIndex]] : selectedImages();
+  slicePaths = its.filter(Boolean).map((it) => it.path);
+  if (!slicePaths.length) { toast(t('Select the images to slice.')); return; }
+  const pend = pendingItems().filter((p) => slicePaths.includes(p.path));
+  if (pend.length) {
+    if (!confirm(t('These images have corrections that are not saved yet. Save them first?'))) return;
+    await saveChanges();
+  }
+  $('#slice-dlg').showModal();
+  let p;
+  try { p = await call('slice.plan', { paths: slicePaths, settings: sliceSettings() }); } catch (e) { toast(e.message, 'error'); return; }
+  const flow = $('#sl-flow');
+  if (p.error) {
+    flow.innerHTML = '';
+    $('#sl-problems').innerHTML = `<span>${esc(t(p.error))}</span>`;
+    $('#sl-table').tHead.innerHTML = ''; $('#sl-table').tBodies[0].innerHTML = '';
+    $('#sl-run').disabled = true;
+    return;
+  }
+  flow.innerHTML = `<div class="part"><b>${p.sources}</b><small>${esc(tn(p.sources, 'image to cut', 'images to cut'))}</small></div><span class="to">→</span>
+    <div class="target"><b>${p.outputs}</b><small>${esc(tn(p.outputs, 'new file', 'new files'))}</small></div>
+    <div class="part"><b>${p.renames}</b><small>${esc(tn(p.renames, 'file renumbered', 'files renumbered'))}</small></div>
+    <div class="part"><b>${p.files} → ${p.after}</b><small>${esc(t('files in the folder'))}</small></div>`;
+  $('#sl-problems').innerHTML = p.problems.map((x) => `<span>${esc(x)}</span>`).join('');
+  $('#sl-table').tHead.innerHTML = `<tr><th>${esc(t('Current name'))}</th><th></th><th>${esc(t('New name'))}</th></tr>`;
+  $('#sl-table').tBodies[0].innerHTML = p.sample.map((r) => `<tr class="${r.piece ? 'ok' : 'same'}"><td>${esc(r.from)}</td><td class="arrow">→</td><td class="to">${esc(r.to)}</td></tr>`).join('');
+  $('#sl-run').disabled = !p.canRun;
+}
+
+$('#sl-run').addEventListener('click', async () => {
+  $('#sl-run').disabled = true;
+  try {
+    const r = await run('slice.run', { paths: slicePaths, settings: sliceSettings() });
+    $('#slice-dlg').close();
+    toast(tn(r.outputs, 'Sliced into {n} file', 'Sliced into {n} files'), 'ok');
+    setUndo(r.undo);
+    if (tool === 'slice') setTool('slice');
+    await reloadAfterChange();
+  } catch { /* the toast says why */ }
+});
+
 // ------------------------------------------------------------------ rescan list
 
 function setRescanCount(n) {
@@ -1124,6 +1229,10 @@ const commands = {
   negative: () => { orient.negative = !orient.negative; paintOrient(); controlsChanged(); },
   apply: saveChanges,
   rescanToggle: toggleRescan,
+  cropTool: () => setTool('crop'),
+  cropClear: () => { for (const k of 'ltrb') $(`#crop-${k}`).value = 0; overlay.setCrop({ l: 0, t: 0, r: 0, b: 0 }); controlsChanged(); },
+  sliceTool: () => setTool('slice'),
+  slice: openSlice,
   rescanList: openRescan,
   rescanCopy: async () => {
     const n = await run('rescan.copy', { headers: $('#rs-headers').checked });
@@ -1195,6 +1304,8 @@ document.addEventListener('keydown', (e) => {
     else if (k.toLowerCase() === 'b' && !e.repeat) setBefore(true);
     else if (k.toLowerCase() === 'r') rotate(e.shiftKey ? -90 : 90);
     else if (k.toLowerCase() === 'm') commands.mirror();
+    else if (k.toLowerCase() === 'k') setTool('crop');
+    else if (k.toLowerCase() === 'l') setTool('slice');
     else if (k.toLowerCase() === 'n') commands.negative();
     return;
   }
@@ -1237,6 +1348,12 @@ $$('.slider').forEach((el) => {
   n.addEventListener('change', () => { r.value = n.value; paintRange(r); controlsChanged(); });
 });
 $('#tone-method').addEventListener('change', () => { applyRanges(Number($('#tone-method').value), true); controlsChanged(); });
+$$('#crop-l, #crop-t, #crop-r, #crop-b').forEach((el) => el.addEventListener('change', () => {
+  const e = gatherEdit();
+  overlay.setCrop({ l: e.cropLeft, t: e.cropTop, r: e.cropRight, b: e.cropBottom });
+  controlsChanged();
+}));
+$$('#slice-parts, #slice-dir, #slice-reverse').forEach((el) => el.addEventListener('change', paintSlice));
 $$('#tone-flags input, #sharp-mode').forEach((el) => el.addEventListener('change', controlsChanged));
 $('#target').addEventListener('change', () => setTarget($('#target').value));
 
@@ -1289,6 +1406,10 @@ async function start() {
   ['#target', '#lang'].forEach((s) => initSegmented($(s)));
   buildThemes();
   viewer = new Viewer($('#stage'), $('#v-img'), onViewChange);
+  overlay = new Overlay($('#stage'), viewer, {
+    onCrop: (c) => { setCropInputs({ cropLeft: c.l, cropTop: c.t, cropRight: c.r, cropBottom: c.b }); controlsChanged(); },
+    onCuts: (cuts) => { sliceCuts.list = cuts; },
+  });
 
   if (!inHost) { status(t('Loupe must run inside its desktop window.')); return; }
   const init = await call('app.init');
@@ -1349,6 +1470,11 @@ window.__loupeSelfTest = async () => {
     ok('edit', await until(() => state.images[0]?.edited));
     await restoreOriginals();
     ok('restore', await until(() => !state.images[0]?.edited));
+    // crop: own correction on image 1 (drawn values), previewed and saved
+    for (const [k, v] of [['l', 10], ['t', 0], ['r', 10], ['b', 0]]) $(`#crop-${k}`).value = v;
+    $('#crop-l').dispatchEvent(new Event('change'));
+    ok('crop-preview', await until(() => state.own.size === 1 && hasCrop(pendingItems()[0].edit)));
+    discardChanges();
     await toggleRescan();
     ok('rescan-mark', await until(() => state.images[0]?.rescan && !$('#rescan-count').hidden));
     await openRescan();
@@ -1369,6 +1495,17 @@ window.__loupeSelfTest = async () => {
     const conf = window.confirm; window.confirm = () => true;
     await undo();
     ok('rename-undo', await until(() => state.images[0]?.name === '73_524_0_0_80_00001.jpg'));
+
+    // slice image 1 into two pages: 6 → 7 files, renumbered; then undo
+    const before6 = state.images.map((it) => it.name);
+    selectIndex(state.items.indexOf(state.images[0]));
+    $('#slice-parts').value = '2'; paintSlice();
+    await openSlice();
+    ok('slice-plan', await until(() => !$('#sl-run').disabled));
+    $('#sl-run').click();
+    ok('slice', await until(() => state.images.length === 7 && state.images[6].name === '73_524_0_0_80_00007.jpg'));
+    await undo();
+    ok('slice-undo', await until(() => state.images.length === 6 && state.images.map((it) => it.name).join() === before6.join()));
 
     await openFolder(sig);
     ok('open-parent', state.folders.length === 3, { path: state.path });

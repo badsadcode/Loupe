@@ -206,6 +206,21 @@ table.plan.rescan td.go { cursor: pointer; color: var(--accent); font-family: va
 table.plan.rescan td.go:hover { text-decoration: underline; }
 table.plan.rescan tr.gone td.go { color: var(--danger); text-decoration: line-through; }
 table.plan.rescan td.mono { font-family: var(--mono); color: var(--text-2); }
+.field-grid.four { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.field-grid.four input { padding: 0 6px; }
+.overlay { position: absolute; inset: 0; pointer-events: none; }
+.crop-box { position: absolute; pointer-events: auto; cursor: move; border: 1px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.5); }
+.crop-box .h { position: absolute; width: 14px; height: 14px; background: #fff; border: 1px solid rgba(0,0,0,.6); border-radius: 3px; }
+.crop-box .n { top: -7px; left: calc(50% - 7px); cursor: ns-resize; } .crop-box .s { bottom: -7px; left: calc(50% - 7px); cursor: ns-resize; }
+.crop-box .w { left: -7px; top: calc(50% - 7px); cursor: ew-resize; } .crop-box .e { right: -7px; top: calc(50% - 7px); cursor: ew-resize; }
+.crop-box .nw { top: -7px; left: -7px; cursor: nwse-resize; } .crop-box .se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+.crop-box .ne { top: -7px; right: -7px; cursor: nesw-resize; } .crop-box .sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+.crop-size { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.65); color: #fff; font: 11.5px var(--mono); pointer-events: none; }
+.cut { position: absolute; pointer-events: auto; background: #ff3b3b; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.cut.v { width: 2px; margin-left: -1px; cursor: ew-resize; }
+.cut.h { height: 2px; margin-top: -1px; cursor: ns-resize; }
+.cut::after { content: ""; position: absolute; inset: -8px; }
+.part-tag { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #ff3b3b; color: #fff; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .empty-note { color: var(--text-3); padding: 20px 0; text-align: center; }
 .tile .badge { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .tile.folder .pic { background: transparent; color: var(--text-3); }

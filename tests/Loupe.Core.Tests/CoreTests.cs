@@ -334,3 +334,78 @@ public class RescanTests
         Assert.Equal("1234\t73\\80\ta;b.jpg\tToo \"dark\"\t2026-11-17 10:00\tD:\\x", RescanList.ToTsv(rows, null));
     }
 }
+
+public class CropAndSliceTests
+{
+    [Fact]
+    public void CropIsAppliedAfterOrientation()
+    {
+        var img = TurboJpeg.DecodeNative(Img.Gray(64, 48));
+        var r = ImageEdit.Apply(img, new EditSettings { Rotation = 90, CropLeft = 0.25, CropRight = 0.25 });
+        Assert.Equal((24, 64), (r.Width, r.Height));   // 48 wide after rotation, half kept
+        var (bytes, lossless, _) = ImageEditor.Render(Img.Gray(64, 48), new EditSettings { CropTop = 0.5 }, new SaveOptions());
+        Assert.False(lossless);
+        Assert.Equal((64, 24, true), TurboJpeg.ReadHeader(bytes));
+    }
+
+    private static void Folder(TempDir t, int n, int w = 200, int h = 100)
+    {
+        Directory.CreateDirectory(t.File("80"));
+        for (int i = 1; i <= n; i++) File.WriteAllBytes(t.File("80", $"73_80_{i:00000}.jpg"), Img.Gray(w, h));
+    }
+
+    [Fact]
+    public void SlicingRenumbersTheFolderAndCanBeUndone()
+    {
+        using var t = new TempDir();
+        Folder(t, 3);
+        string marker = t.File("80", "73_80_00003.jpg");
+        File.WriteAllBytes(marker, Img.Gray(120, 100));          // recognisable by its width
+        var s = new SliceSettings { Parts = 2 };
+        var plan = Slicer.Plan([t.File("80", "73_80_00001.jpg")], s);
+        Assert.True(plan.CanRun, plan.Error ?? string.Join(";", plan.Problems));
+        Assert.Equal(["73_80_00001.jpg", "73_80_00002.jpg"], plan.Outputs.Select(o => Path.GetFileName(o.Target)));
+        Assert.Equal(["73_80_00002.jpg→73_80_00003.jpg", "73_80_00003.jpg→73_80_00004.jpg"],
+            plan.Renames.Select(m => Path.GetFileName(m.From) + "→" + Path.GetFileName(m.To)));
+
+        var log = Slicer.Run(plan, s, t.File("keep"));
+        var names = Directory.GetFiles(t.File("80")).Select(Path.GetFileName).OrderBy(x => x).ToList();
+        Assert.Equal(["73_80_00001.jpg", "73_80_00002.jpg", "73_80_00003.jpg", "73_80_00004.jpg"], names);
+        Assert.Equal((100, 100, true), TurboJpeg.ReadHeader(File.ReadAllBytes(t.File("80", "73_80_00001.jpg"))));
+        Assert.Equal(120, TurboJpeg.ReadHeader(File.ReadAllBytes(t.File("80", "73_80_00004.jpg"))).Width);
+
+        SafeMover.Undo(log);
+        names = Directory.GetFiles(t.File("80")).Select(Path.GetFileName).OrderBy(x => x).ToList();
+        Assert.Equal(["73_80_00001.jpg", "73_80_00002.jpg", "73_80_00003.jpg"], names);
+        Assert.Equal(200, TurboJpeg.ReadHeader(File.ReadAllBytes(t.File("80", "73_80_00001.jpg"))).Width);
+        Assert.Equal(120, TurboJpeg.ReadHeader(File.ReadAllBytes(marker)).Width);
+    }
+
+    [Fact]
+    public void ReverseOrderAndUnevenCuts()
+    {
+        var r = Slicer.Ranges(1000, new SliceSettings { Parts = 2, Cuts = [0.4], Reverse = true });
+        Assert.Equal([(400, 1000), (0, 400)], r);
+        Assert.Equal([(0, 333), (333, 667), (667, 1000)], Slicer.Ranges(1000, new SliceSettings { Parts = 3 }));
+    }
+
+    [Fact]
+    public void FoldersWithMixedNamesAreRefused()
+    {
+        using var t = new TempDir();
+        Folder(t, 2);
+        File.WriteAllBytes(t.File("80", "cover.jpg"), Img.Gray(64, 48));
+        Assert.NotNull(Slicer.Plan([t.File("80", "73_80_00001.jpg")], new SliceSettings()).Error);
+    }
+
+    [Fact]
+    public void NumberWidthGrowsWhenNeeded()
+    {
+        using var t = new TempDir();
+        Directory.CreateDirectory(t.File("f"));
+        for (int i = 1; i <= 9; i++) File.WriteAllBytes(t.File("f", $"p_{i}.jpg"), Img.Gray(64, 48));
+        var plan = Slicer.Plan([t.File("f", "p_9.jpg")], new SliceSettings());
+        Assert.Equal(["p_09.jpg", "p_10.jpg"], plan.Outputs.Select(o => Path.GetFileName(o.Target)));
+        Assert.Contains(plan.Renames, m => Path.GetFileName(m.From) == "p_1.jpg" && Path.GetFileName(m.To) == "p_01.jpg");
+    }
+}

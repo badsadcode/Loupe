@@ -138,6 +138,36 @@
           </div>
         </div>
         <div class="section">
+          <h3>Crop</h3>
+          <div class="field-grid four">
+            <label class="field">Left %<input type="number" id="crop-l" min="0" max="95" step="0.5"></label>
+            <label class="field">Top %<input type="number" id="crop-t" min="0" max="95" step="0.5"></label>
+            <label class="field">Right %<input type="number" id="crop-r" min="0" max="95" step="0.5"></label>
+            <label class="field">Bottom %<input type="number" id="crop-b" min="0" max="95" step="0.5"></label>
+          </div>
+          <div class="btn-row">
+            <button class="btn toggle grow" id="crop-tool" data-cmd="cropTool" title="Draw the crop on the image in the viewer (K)"><i data-icon="crop"></i>Draw in viewer</button>
+            <button class="btn" data-cmd="cropClear" title="No crop"><i data-icon="x"></i>Clear</button>
+          </div>
+          <p class="hint">Part of the correction: global for the folder or own for single images, like the tone.</p>
+        </div>
+        <div class="section">
+          <h3>Slice</h3>
+          <div class="field-grid two">
+            <label class="field">Pieces
+              <select id="slice-parts"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+            </label>
+            <label class="field">Cut
+              <select id="slice-dir"><option value="v">Side by side (pages)</option><option value="h">One above the other</option></select>
+            </label>
+          </div>
+          <label class="switch"><input type="checkbox" id="slice-reverse"><span></span>Number from the right (right page first)</label>
+          <div class="btn-row">
+            <button class="btn toggle grow" id="slice-tool" data-cmd="sliceTool" title="Show and move the cut lines in the viewer (L)"><i data-icon="scissors"></i>Cut lines</button>
+            <button class="btn" data-cmd="slice" title="Cut the selected images (or the one in the viewer) and renumber the folder"><i data-icon="square-split-horizontal"></i>Slice…</button>
+          </div>
+        </div>
+        <div class="section">
           <div class="btn-row">
             <button class="btn btn-primary grow" data-cmd="apply" id="apply-btn" title="Write the corrections into the files (Ctrl+S); the originals are kept"><i data-icon="save"></i><span id="apply-label">Save changes</span></button>
             <button class="btn" data-cmd="reset" id="reset-btn" title="Back to neutral (no correction)"><i data-icon="rotate-ccw"></i><span id="reset-label">Reset</span></button>
@@ -234,6 +264,22 @@
       <p class="hint"><i data-icon="info"></i>The files move into a new folder and are renumbered; nothing is overwritten. Undo moves them back.</p>
       <button class="btn" data-close>Cancel</button>
       <button class="btn btn-primary" id="mg-run" disabled><i data-icon="merge"></i>Merge</button>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ slice dialog -->
+  <dialog class="modal" id="slice-dlg">
+    <div class="modal-head"><h2><i data-icon="scissors"></i>Slice</h2>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="merge-body">
+      <div class="merge-flow" id="sl-flow" data-no-i18n></div>
+      <div class="problems" id="sl-problems"></div>
+      <div class="table-wrap short"><table class="plan" id="sl-table" data-no-i18n><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="modal-foot">
+      <p class="hint"><i data-icon="info"></i>The pieces get the following numbers and the later files move up, so the numbering stays continuous. Nothing is overwritten; Undo puts everything back.</p>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="sl-run" disabled><i data-icon="scissors"></i>Slice</button>
     </div>
   </dialog>
 
@@ -345,6 +391,7 @@
         <p><kbd data-no-i18n>B</kbd> (hold)<span>Before: without the correction</span></p>
         <p><kbd data-no-i18n>R</kbd> / <kbd data-no-i18n>Shift</kbd>+<kbd data-no-i18n>R</kbd><span>Rotate right / left</span></p>
         <p><kbd data-no-i18n>M</kbd> / <kbd data-no-i18n>N</kbd><span>Mirror / negative</span></p>
+        <p><kbd data-no-i18n>K</kbd> / <kbd data-no-i18n>L</kbd><span>Crop tool / cut lines</span></p>
         <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>S</kbd><span>Save the corrections to the files</span></p>
         <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>Shift</kbd>+<kbd data-no-i18n>Z</kbd><span>Restore the original</span></p>
         <p><kbd data-no-i18n>Esc</kbd><span>Back to the thumbnails</span></p>

@@ -2,7 +2,9 @@ namespace Loupe.Core.Imaging;
 
 /// <summary>
 /// One QC correction: tone (the Striplight PRO engine), sharpening, negative and orientation.
-/// Applied in that order: negative → tone → sharpen → rotate (clockwise) → mirror.
+/// Applied in that order: negative → tone → sharpen → rotate (clockwise) → mirror → crop.
+/// The crop is given as fractions of the (oriented) image cut away from each side, so one crop
+/// fits a whole folder of similar scans whatever their exact pixel size.
 /// </summary>
 public sealed record EditSettings
 {
@@ -18,6 +20,23 @@ public sealed record EditSettings
     /// <summary>0, 90, 180 or 270 degrees clockwise.</summary>
     public int Rotation { get; init; }
     public bool Mirror { get; init; }
+    /// <summary>Fraction (0–0.95) of the width / height removed on each side, after orientation.</summary>
+    public double CropLeft { get; init; }
+    public double CropTop { get; init; }
+    public double CropRight { get; init; }
+    public double CropBottom { get; init; }
+
+    public bool HasCrop => CropLeft > 0.0005 || CropTop > 0.0005 || CropRight > 0.0005 || CropBottom > 0.0005;
+
+    /// <summary>The crop in pixels for an image of <paramref name="w"/> × <paramref name="h"/> (after orientation).</summary>
+    public (int X, int Y, int W, int H) CropRect(int w, int h)
+    {
+        double l = Math.Clamp(CropLeft, 0, 0.95), t = Math.Clamp(CropTop, 0, 0.95);
+        double r = Math.Clamp(CropRight, 0, 0.95 - l), b = Math.Clamp(CropBottom, 0, 0.95 - t);
+        int x = (int)Math.Round(w * l), y = (int)Math.Round(h * t);
+        int cw = Math.Max(1, (int)Math.Round(w * (1 - l - r))), ch = Math.Max(1, (int)Math.Round(h * (1 - t - b)));
+        return (x, y, Math.Min(cw, w - x), Math.Min(ch, h - y));
+    }
 
     public ToneSettings Tone => new(Method, Flags, Contrast, Brightness, Gamma, Strength);
 
@@ -26,7 +45,7 @@ public sealed record EditSettings
     /// <summary>Changes nothing in the pixels' values (only orientation, if anything).</summary>
     public bool IsPixelNoOp => Tone.IsNoOp && !Negative && Sharpen <= 0;
 
-    public bool IsNoOp => IsPixelNoOp && NormalRotation == 0 && !Mirror;
+    public bool IsNoOp => IsPixelNoOp && NormalRotation == 0 && !Mirror && !HasCrop;
 
     public static EditSettings None { get; } = new();
 }
@@ -37,13 +56,26 @@ public static class ImageEdit
     public static DecodedImage Apply(DecodedImage img, EditSettings e)
     {
         if (e.IsNoOp) return img;
+        DecodedImage result;
         if (img.Channels == 1)
         {
             var g = new GrayImage(img.Width, img.Height, img.Pixels);
             ApplyGray(g, e);
-            return new DecodedImage(g.Width, g.Height, 1, g.Data);
+            result = new DecodedImage(g.Width, g.Height, 1, g.Data);
         }
-        return ApplyBgra(img, e);
+        else result = ApplyBgra(img, e);
+        return e.HasCrop ? Crop(result, e.CropRect(result.Width, result.Height)) : result;
+    }
+
+    /// <summary>Copies the rectangle out of the image.</summary>
+    public static DecodedImage Crop(DecodedImage img, (int X, int Y, int W, int H) r)
+    {
+        if (r.X == 0 && r.Y == 0 && r.W == img.Width && r.H == img.Height) return img;
+        int ch = img.Channels;
+        var dst = GC.AllocateUninitializedArray<byte>(r.W * r.H * ch);
+        for (int y = 0; y < r.H; y++)
+            Buffer.BlockCopy(img.Pixels, ((r.Y + y) * img.Width + r.X) * ch, dst, y * r.W * ch, r.W * ch);
+        return new DecodedImage(r.W, r.H, ch, dst);
     }
 
     private static void ApplyGray(GrayImage g, EditSettings e)

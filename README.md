@@ -17,6 +17,11 @@ Striplight PRO engine (libjpeg-turbo + the Striplight tone methods).
     so "Restore original" always returns the file as it was before Loupe touched it.
   - Saved at the **same JPEG quality** as the original (estimated from the file), keeping its
     **dpi and metadata**. Rotate / mirror are **lossless** whenever the image size allows.
+- **Crop** (part of the correction, global or own, drawn in the viewer with handles or typed in %).
+- **Slice** images into 2–4 pieces (double-page spreads into pages, or one above the other), cut
+  lines moved in the viewer, optional right-to-left numbering. The folder is **renumbered** so the
+  sequence stays continuous (`…_00041` → `…_00041` + `…_00042`, later files move up); nothing is
+  overwritten and Undo restores the original.
 - **Batch rename** with a live preview: pattern (`{name}`, `{folder}`, `{n}`), counter, find /
   replace (also regular expressions), letter case. Clashing names block the rename; nothing is
   ever overwritten; Undo puts the old names back.
