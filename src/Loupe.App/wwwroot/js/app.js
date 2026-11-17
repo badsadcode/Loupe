@@ -47,6 +47,7 @@ function applyViewBg(bg) {
   $$('#view-bgs .bg-swatch').forEach((s) => s.setAttribute('aria-checked', String(s.dataset.bg === (bg || 'theme'))));
   if (/^#[0-9a-f]{6}$/i.test(bg || '')) $('#view-bg-custom').value = bg;
   state.settings.viewBackground = bg || 'theme';
+  syncPopupTheme();
 }
 $$('#view-bgs .bg-swatch').forEach((s) => s.addEventListener('click', () => { applyViewBg(s.dataset.bg); saveSettings({ viewBackground: s.dataset.bg }); }));
 $('#view-bg-custom').addEventListener('input', (e) => applyViewBg(e.target.value));
@@ -111,6 +112,11 @@ function applyTheme(id) {
   if (inHost) call('app.theme', { theme: id, dark, background }).catch(() => {});
   $$('.theme-card').forEach((c) => c.setAttribute('aria-checked', String(c.dataset.theme === id)));
   state.settings.theme = id;
+  syncPopupTheme();
+}
+
+function syncPopupTheme() {
+  if (state.popupOpen) call('popup.themeSync', { theme: state.settings.theme, viewBackground: state.settings.viewBackground }).catch(() => {});
 }
 
 function buildThemes() {
@@ -379,6 +385,7 @@ function renderGrid() {
 }
 
 function paintSelection() {
+  pushPopup();
   $$('#grid .tile').forEach((el) => {
     const i = Number(el.dataset.i);
     el.classList.toggle('sel', state.selected.has(i));
@@ -500,6 +507,7 @@ async function showImage(index, { keepView = false } = {}) {
   $('#v-pos').textContent = `${index + 1} / ${state.images.length}`;
   $('#v-name').textContent = it.name;
   paintViewerFlag();
+  pushPopup();
   const token = ++viewToken;
   const img = $('#v-img');
   const url = viewUrl(it, { full: wantFull });
@@ -695,6 +703,7 @@ function controlsChanged() {
 
 function previewsChanged() {
   paintQuickbar();
+  pushPopup();
   refreshThumbs();
   refreshView();
   refreshTarget();
@@ -1075,6 +1084,7 @@ async function toggleRescan() {
   for (const tile of $$('#grid .tile.image')) tile.classList.toggle('rescan', !!state.items[Number(tile.dataset.i)]?.rescan);
   setRescanCount(r.entries.length);
   paintViewerFlag();
+  pushPopup();
   toast(on ? tn(list.length, 'Marked {n} image for rescanning', 'Marked {n} images for rescanning') : tn(list.length, 'Unmarked {n} image', 'Unmarked {n} images'), 'ok');
 }
 
@@ -1179,8 +1189,9 @@ const TOOLS = {
   zoomOut: { icon: 'zoom-out', label: 'Zoom out', run: () => (state.viewer ? viewer.zoomBy(1 / 1.25) : zoomGrid(false)) },
   fit: { icon: 'maximize', label: 'Fit (0)', run: () => state.viewer && viewer.fit() },
   refresh: { icon: 'refresh-cw', label: 'Refresh (F5)', run: () => commands.refresh() },
+  popup: { icon: 'monitor', label: 'Pop-out viewer (Ctrl+P)', run: () => togglePopup(), on: () => state.popupOpen },
 };
-const DEFAULT_TOOLBAR = ['rotL', 'rotR', 'mirror', 'negative', '|', 'darker', 'brighter', 'autoLevels', '|', 'crop', 'cutLines', 'slice', '|', 'rescan', 'before', '|', 'save', 'restore', 'undo'];
+const DEFAULT_TOOLBAR = ['rotL', 'rotR', 'mirror', 'negative', '|', 'darker', 'brighter', 'autoLevels', '|', 'crop', 'cutLines', 'slice', '|', 'rescan', 'before', '|', 'save', 'restore', 'undo', '|', 'popup'];
 
 function nudge(key, d) {
   const [r] = sliderInputs(slider(key));
@@ -1255,6 +1266,47 @@ $('#tool-list').addEventListener('change', (e) => {
   const list = [...toolbarIds()];
   if (e.target.checked) list.push(r.dataset.id); else list.splice(list.indexOf(r.dataset.id), 1);
   saveToolbar(list);
+});
+
+// ------------------------------------------------------------------ pop-out viewer (second monitor)
+
+state.popupOpen = false;
+
+function togglePopup() { call(state.popupOpen ? 'popup.close' : 'popup.open').catch((e) => toast(e.message, 'error')); }
+
+/** The image the pop-out shows: the one in the viewer, else the focused thumbnail. */
+const popupItem = () => (state.viewer ? state.images[state.vIndex] : (focusItem()?.type === 'image' ? focusItem() : null));
+
+const pushPopup = debounce(() => {
+  if (!state.popupOpen) return;
+  const it = popupItem();
+  call('popup.update', it ? {
+    path: it.path, modified: it.modified, name: it.name, index: state.images.indexOf(it), count: state.images.length,
+    edit: editJson(effective(it)), before: state.before, rescan: !!it.rescan,
+  } : {}).catch(() => {});
+}, 60);
+
+on('popup.wanted', () => pushPopup());
+on('popup.state', (s) => {
+  state.popupOpen = s.open;
+  $('#popup-btn').setAttribute('aria-pressed', String(s.open));
+  paintQuickbar();
+  if (s.open) { pushPopup(); syncPopupTheme(); }
+});
+on('popup.action', ({ action }) => {
+  const it = popupItem();
+  const k = it ? state.images.indexOf(it) : -1;
+  const go = (n) => {
+    if (n < 0 || n >= state.images.length) return;
+    if (state.viewer) showImage(n); else selectIndex(state.items.indexOf(state.images[n]));
+  };
+  if (action === 'next') go(k + 1);
+  else if (action === 'prev') go(k - 1);
+  else if (action === 'first') go(0);
+  else if (action === 'last') go(state.images.length - 1);
+  else if (action === 'before-on') setBefore(true);
+  else if (action === 'before-off') setBefore(false);
+  else if (action === 'rescan') toggleRescan();
 });
 
 // ------------------------------------------------------------------ settings dialog
@@ -1341,6 +1393,7 @@ const commands = {
   negative: () => { orient.negative = !orient.negative; paintOrient(); controlsChanged(); },
   apply: saveChanges,
   rescanToggle: toggleRescan,
+  popup: togglePopup,
   toolbarSep: () => saveToolbar([...toolbarIds(), '|']),
   toolbarDefault: () => saveToolbar([...DEFAULT_TOOLBAR]),
   resetSettings: async () => {
@@ -1395,6 +1448,7 @@ function setBefore(on) {
   if (state.before === on) return;
   state.before = on;
   $('#before-btn').setAttribute('aria-pressed', String(on));
+  pushPopup();
   $('#v-badge').hidden = !on;
   if (state.viewer) showImage(state.vIndex, { keepView: true });
 }
@@ -1417,6 +1471,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'F5') { e.preventDefault(); commands.refresh(); return; }
   if (ctrl && k.toLowerCase() === 's') { e.preventDefault(); saveChanges(); return; }
   if (ctrl && k.toLowerCase() === 'r') { e.preventDefault(); toggleRescan(); return; }
+  if (ctrl && k.toLowerCase() === 'p') { e.preventDefault(); togglePopup(); return; }
   if (ctrl && e.shiftKey && k.toLowerCase() === 'z') { e.preventDefault(); restoreOriginals(); return; }
   if (ctrl && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (typing) return;
@@ -1557,6 +1612,7 @@ async function start() {
   loadControls(state.global);
   renderQuickbar();
   setUndo(init.undo);
+  call('popup.isOpen').then((o) => { if (o) { state.popupOpen = true; $('#popup-btn').setAttribute('aria-pressed', 'true'); pushPopup(); } }).catch(() => {});
 
   state.roots = await call('fs.roots');
   renderTree();

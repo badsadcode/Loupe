@@ -238,6 +238,14 @@ table.plan.rescan td.mono { font-family: var(--mono); color: var(--text-2); }
 .tile .crop-mark { display: none; position: absolute; bottom: 30px; right: 7px; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #ff8000; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .grid.nonames .tile .crop-mark { bottom: 8px; }
 .tile.cropped .crop-mark { display: grid; }
+body.popup { display: flex; flex-direction: column; grid-template-rows: none; }
+body.popup .pop-bar { display: flex; align-items: center; gap: 6px; height: 42px; padding: 0 10px; background: var(--surface); border-bottom: 1px solid var(--border); color: var(--text-2); flex: none; }
+body.popup .stage { flex: 1; background: var(--view-bg, var(--canvas)); }
+body.popup #topmost.on { background: var(--accent-soft); color: var(--accent); }
+body.popup.fs .pop-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; transform: translateY(-100%); transition: transform .15s; }
+body.popup.fs.bar-shown .pop-bar { transform: none; }
+body.popup .empty { pointer-events: none; }
+.icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .empty-note { color: var(--text-3); padding: 20px 0; text-align: center; }
 .tile .badge { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .tile.folder .pic { background: transparent; color: var(--text-3); }

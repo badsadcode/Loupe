@@ -14,6 +14,10 @@ public interface IWindowHost
     /// <summary>Colours the native title bar like the page (any theme: dark flag + background colour).</summary>
     void ApplyTheme(bool dark, System.Drawing.Color background);
     Window Window { get; }
+    /// <summary>Opens the pop-out viewer (second monitor), or brings it to the front.</summary>
+    void OpenPopup();
+    void ClosePopup();
+    PopupWindow? Popup { get; }
 }
 
 /// <summary>
@@ -29,6 +33,7 @@ public partial class MainWindow : Window, IWindowHost
     private readonly ImageService _images;
     private readonly SmokeTest? _smoke;
     private System.Drawing.Color _bg = System.Drawing.Color.FromArgb(255, 0x0E, 0x0F, 0x12);
+    private PopupWindow? _popup;
     private bool _dark = true;
 
     public Window Window => this;
@@ -80,11 +85,36 @@ public partial class MainWindow : Window, IWindowHost
         _bg = background;
         DarkTitleBar.Apply(new WindowInteropHelper(this).Handle, dark, background);
         if (Web.CoreWebView2 is not null) Web.DefaultBackgroundColor = background;
+        _popup?.ApplyTheme(dark, background);
     }
+
+    public PopupWindow? Popup => _popup;
+
+    public void OpenPopup()
+    {
+        if (_popup is not null)
+        {
+            if (_popup.WindowState == WindowState.Minimized) _popup.WindowState = WindowState.Normal;
+            _popup.Activate();
+            return;
+        }
+        _popup = new PopupWindow(_bridge, _images, _controller.Settings, _dark, _bg);
+        _popup.Closed += (_, _) =>
+        {
+            _popup = null;
+            _bridge.Emit("popup.state", new { open = false });
+            _controller.Settings.Save();
+        };
+        _popup.Show();
+        _bridge.Emit("popup.state", new { open = true });
+    }
+
+    public void ClosePopup() => _popup?.Close();
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         if (_smoke is null && !_controller.ConfirmClose()) { e.Cancel = true; return; }
+        _popup?.Close();
         _controller.Shutdown();
     }
 }

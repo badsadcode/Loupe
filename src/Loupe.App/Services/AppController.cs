@@ -125,6 +125,27 @@ public sealed class AppController
             return _settings;
         });
 
+        // ---- pop-out viewer (second monitor). The main page sends what to show; the pop-out
+        // page sends its key presses back as actions. Both go through events to every page.
+        _bridge.On("popup.open", _ => { _host.OpenPopup(); return null; });
+        _bridge.On("popup.close", _ => { _host.ClosePopup(); return null; });
+        _bridge.On("popup.isOpen", _ => _host.Popup is not null);
+        _bridge.On("popup.update", args => { _bridge.Emit("popup.image", args.Clone()); return null; });
+        _bridge.On("popup.themeSync", args => { _bridge.Emit("popup.theme", args.Clone()); return null; });
+        _bridge.On("popup.action", args => { _bridge.Emit("popup.action", args.Clone()); return null; });
+        _bridge.On("popup.fullscreen", args => _host.Popup?.SetFullscreen(BridgeHost.Arg<bool?>(args, "on", null)) ?? false);
+        _bridge.On("popup.topmost", args =>
+        {
+            _settings.PopupTopmost = BridgeHost.Arg(args, "on", !_settings.PopupTopmost);
+            if (_host.Popup is { } p) p.Topmost = _settings.PopupTopmost;
+            return _settings.PopupTopmost;
+        });
+        _bridge.On("popup.ready", _ =>
+        {
+            _bridge.Emit("popup.wanted", null);   // the main page answers with popup.update
+            return new { fullscreen = _host.Popup?.IsFullscreen ?? false, topmost = _settings.PopupTopmost, viewBackground = _settings.ViewBackground, theme = _settings.Theme };
+        });
+
         // ---- browsing
         _bridge.On("fs.roots", _ => Roots());
         _bridge.OnAsync("fs.list", async args =>

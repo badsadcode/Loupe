@@ -9,6 +9,8 @@ Striplight PRO engine (libjpeg-turbo + the Striplight tone methods).
   cached locally, decoded at reduced size straight from the JPEG, so big folders open fast.
   Thumbnail size or a fixed number of columns; Ctrl+wheel changes either.
 - **View** with zoom / pan / 1:1, next / previous with read-ahead.
+- **Pop-out viewer** (Ctrl+P) for a second monitor: follows the image chosen in the main window
+  (thumbnails or viewer) with the correction preview; F11 full screen; remembers its monitor.
 - **Correct** tone (all Striplight methods, rescue curves, strength), sharpen, negative,
   rotate and mirror. As in Striplight PRO: a **global** correction for the whole folder and
   **own** corrections for single images (orange), locked against later global changes. Thumbnails

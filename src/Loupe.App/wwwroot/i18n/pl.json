@@ -508,5 +508,15 @@
  "Move up": "W górę",
  "Move down": "W dół",
  "Remove": "Usuń",
+ "Pop-out viewer for a second monitor (Ctrl+P)": "Osobne okno podglądu na drugi monitor (Ctrl+P)",
+ "Pop-out viewer (Ctrl+P)": "Osobne okno podglądu (Ctrl+P)",
+ "Pop-out viewer (second monitor; F11 full screen there)": "Osobne okno podglądu (drugi monitor; tam F11 – pełny ekran)",
+ "Loupe — viewer": "Loupe — podgląd",
+ "Always on top": "Zawsze na wierzchu",
+ "Full screen (F11)": "Pełny ekran (F11)",
+ "Close (Esc)": "Zamknij (Esc)",
+ "Select an image in the main window": "Wybierz obraz w głównym oknie",
+ "This window shows the image chosen there, with the correction preview. X / C: previous / next, F11: full screen.": "To okno pokazuje wybrany tam obraz z podglądem poprawki. X / C: poprzedni / następny, F11: pełny ekran.",
+ "The viewer window could not start: {error}": "Nie udało się uruchomić okna podglądu: {error}",
  "Folder does not exist yet: {path}": "Folder jeszcze nie istnieje: {path}"
 }

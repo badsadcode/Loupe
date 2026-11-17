@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head>
+  <meta charset="utf-8">
+  <title>Loupe — viewer</title>
+  <link rel="stylesheet" href="css/themes.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="popup">
+  <div class="pop-bar" id="bar">
+    <span class="v-pos" id="pos" data-no-i18n></span>
+    <span class="v-name" id="name" data-no-i18n></span>
+    <span class="grow"></span>
+    <button class="icon-btn" data-act="zoomOut" title="Zoom out (-)"><i data-icon="zoom-out"></i></button>
+    <span class="v-zoom" id="zoom" data-no-i18n>100%</span>
+    <button class="icon-btn" data-act="zoomIn" title="Zoom in (+)"><i data-icon="zoom-in"></i></button>
+    <button class="btn btn-ghost sm" data-act="fit" title="Fit (0)"><i data-icon="maximize"></i>Fit</button>
+    <button class="btn btn-ghost sm keep" data-act="actual" title="Actual pixels (1)">1:1</button>
+    <span class="tb-sep"></span>
+    <button class="icon-btn" data-act="topmost" id="topmost" title="Always on top"><i data-icon="pin"></i></button>
+    <button class="icon-btn" data-act="fullscreen" id="fs" title="Full screen (F11)"><i data-icon="monitor"></i></button>
+    <button class="icon-btn" data-act="close" title="Close (Esc)"><i data-icon="x"></i></button>
+  </div>
+  <div class="stage" id="stage">
+    <img id="img" alt="" draggable="false">
+    <div class="v-loading" id="loading" hidden></div>
+    <div class="v-badge" id="badge" hidden>Before</div>
+    <div class="v-flag" id="flag" hidden><i data-icon="flag"></i>Marked for rescanning</div>
+    <div class="empty" id="empty"><i data-icon="images" data-size="40"></i><h2>Select an image in the main window</h2>
+      <p>This window shows the image chosen there, with the correction preview. X / C: previous / next, F11: full screen.</p></div>
+  </div>
+  <script type="module" src="js/popup.js"></script>
+</body>
+</html>

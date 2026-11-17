@@ -20,7 +20,8 @@ public static class WebViewSetup
         return _env ??= CoreWebView2Environment.CreateAsync(null, userData);
     }
 
-    public static void Configure(CoreWebView2 core, BridgeHost bridge, ImageService images, Dispatcher dispatcher)
+    /// <summary>Configures a WebView2; returns an action that detaches it from the bridge (for closing windows).</summary>
+    public static Action Configure(CoreWebView2 core, BridgeHost bridge, ImageService images, Dispatcher dispatcher)
     {
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = false;
@@ -42,7 +43,8 @@ public static class WebViewSetup
             string reply = await bridge.HandleAsync(e.WebMessageAsJson);
             core.PostWebMessageAsJson(reply);
         };
-        bridge.Outgoing += json => dispatcher.InvokeAsync(() => core.PostWebMessageAsJson(json));
+        void Post(string json) => dispatcher.InvokeAsync(() => { try { core.PostWebMessageAsJson(json); } catch (InvalidOperationException) { } });
+        bridge.Outgoing += Post;
 
         core.NewWindowRequested += (_, e) => { e.Handled = true; Shell.OpenUrl(e.Uri); };
         core.NavigationStarting += (_, e) =>
@@ -53,5 +55,6 @@ public static class WebViewSetup
                 Shell.OpenUrl(e.Uri);
             }
         };
+        return () => bridge.Outgoing -= Post;
     }
 }

@@ -94,6 +94,16 @@ public sealed class SmokeTest
             await core.ExecuteScriptAsync("window.__loupeShow && window.__loupeShow('viewer')");
             await Task.Delay(1500);
             await Capture(core, "02-viewer");
+            // Pop-out viewer: open it, let the main page send the focused image, take a picture.
+            if (window is IWindowHost host)
+            {
+                host.OpenPopup();
+                await Task.Delay(3500);
+                if (host.Popup?.Core is { } pc) await Capture(pc, "04-popup");
+                else Fail("pop-out viewer did not open");
+                host.ClosePopup();
+                await Task.Delay(400);
+            }
             await core.ExecuteScriptAsync("window.__loupeShow && window.__loupeShow('rename')");
             await Task.Delay(800);
             await Capture(core, "03-rename");

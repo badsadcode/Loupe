@@ -50,6 +50,14 @@ public sealed class AppSettings
     /// <summary>Quick toolbar tool ids in order ("|" = separator); empty = the default set.</summary>
     public List<string> Toolbar { get; set; } = [];
 
+    // Pop-out viewer (second monitor): position and size of the normal window, full screen, on top.
+    public double? PopupLeft { get; set; }
+    public double? PopupTop { get; set; }
+    public double PopupWidth { get; set; } = 1100;
+    public double PopupHeight { get; set; } = 800;
+    public bool PopupFullscreen { get; set; }
+    public bool PopupTopmost { get; set; }
+
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loupe", "settings.json");
 
