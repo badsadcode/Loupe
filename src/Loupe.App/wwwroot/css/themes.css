@@ -1,0 +1,147 @@
+/* Loupe themes. Every colour in app.css comes from these tokens, so a new theme is one block:
+   copy one below, change the id and the colours, and add it to THEMES in js/app.js.
+   --is-dark (1 / 0) tells the window which title bar to draw. */
+
+:root, :root[data-theme="graphite"] {
+  --is-dark: 1;
+  --bg: #0e0f12;
+  --canvas: #08090b;
+  --surface: #14161a;
+  --surface-2: #1a1d22;
+  --surface-3: #22262d;
+  --surface-4: #2a2f37;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-2: rgba(255, 255, 255, 0.12);
+  --text: #e6e8ec;
+  --text-2: #a4a9b4;
+  --text-3: #6c727d;
+  --accent: #f5a524;
+  --accent-hover: #ffb84d;
+  --accent-ink: #1b1204;
+  --danger: #f87171;
+  --ok: #34d399;
+  --thumb-bg: #0a0b0d;
+  color-scheme: dark;
+}
+
+:root[data-theme="daylight"] {
+  --is-dark: 0;
+  --bg: #f4f5f7;
+  --canvas: #e4e6ea;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --surface-3: #eef0f3;
+  --surface-4: #e1e4e9;
+  --border: rgba(15, 23, 42, 0.08);
+  --border-2: rgba(15, 23, 42, 0.15);
+  --text: #16191f;
+  --text-2: #4a515e;
+  --text-3: #7a818e;
+  --accent: #e8970f;
+  --accent-hover: #f5a524;
+  --accent-ink: #1b1204;
+  --danger: #dc2626;
+  --ok: #059669;
+  --thumb-bg: #dfe2e7;
+  color-scheme: light;
+}
+
+:root[data-theme="midnight"] {
+  --is-dark: 1;
+  --bg: #0b1020;
+  --canvas: #060a15;
+  --surface: #111830;
+  --surface-2: #162039;
+  --surface-3: #1d2846;
+  --surface-4: #263354;
+  --border: rgba(160, 190, 255, 0.08);
+  --border-2: rgba(160, 190, 255, 0.15);
+  --text: #e3e9f8;
+  --text-2: #9aa8c7;
+  --text-3: #64729a;
+  --accent: #38bdf8;
+  --accent-hover: #7dd3fc;
+  --accent-ink: #04121c;
+  --danger: #fb7185;
+  --ok: #34d399;
+  --thumb-bg: #070b17;
+  color-scheme: dark;
+}
+
+/* The darkroom: red safelight on black. Easy on the eyes for long sessions. */
+:root[data-theme="darkroom"] {
+  --is-dark: 1;
+  --bg: #0a0606;
+  --canvas: #050303;
+  --surface: #120a0a;
+  --surface-2: #180d0d;
+  --surface-3: #221212;
+  --surface-4: #2d1818;
+  --border: rgba(255, 90, 90, 0.08);
+  --border-2: rgba(255, 90, 90, 0.15);
+  --text: #f0d6d3;
+  --text-2: #b48c88;
+  --text-3: #7d5a57;
+  --accent: #e5484d;
+  --accent-hover: #ff6369;
+  --accent-ink: #1a0405;
+  --danger: #ff9f43;
+  --ok: #8bd17c;
+  --thumb-bg: #060303;
+  color-scheme: dark;
+}
+
+/* Sepia: old paper and archive boxes. */
+:root[data-theme="sepia"] {
+  --is-dark: 0;
+  --bg: #f3ecdf;
+  --canvas: #e6dcc8;
+  --surface: #fbf6ec;
+  --surface-2: #f6efe1;
+  --surface-3: #ede3d0;
+  --surface-4: #e2d5bd;
+  --border: rgba(80, 55, 20, 0.10);
+  --border-2: rgba(80, 55, 20, 0.18);
+  --text: #3a2c1a;
+  --text-2: #6b5638;
+  --text-3: #988260;
+  --accent: #a0612b;
+  --accent-hover: #b8733a;
+  --accent-ink: #fff8ee;
+  --danger: #b4321f;
+  --ok: #4d7c2f;
+  --thumb-bg: #ded2bb;
+  color-scheme: light;
+}
+
+:root[data-theme="forest"] {
+  --is-dark: 1;
+  --bg: #0c120f;
+  --canvas: #070b09;
+  --surface: #111a15;
+  --surface-2: #16211b;
+  --surface-3: #1d2b23;
+  --surface-4: #26372d;
+  --border: rgba(160, 255, 200, 0.07);
+  --border-2: rgba(160, 255, 200, 0.13);
+  --text: #e1ece5;
+  --text-2: #9db5a6;
+  --text-3: #66806f;
+  --accent: #4ade80;
+  --accent-hover: #86efac;
+  --accent-ink: #04140a;
+  --danger: #f87171;
+  --ok: #4ade80;
+  --thumb-bg: #08100b;
+  color-scheme: dark;
+}
+
+/* Derived tokens (same recipe for every theme). */
+:root {
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 45%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
+  --menu-bg: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  --toast-bg: color-mix(in srgb, var(--surface-3) 96%, transparent);
+  --backdrop: rgba(0, 0, 0, 0.55);
+}

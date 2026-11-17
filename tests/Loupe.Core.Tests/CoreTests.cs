@@ -1,0 +1,293 @@
+using Loupe.Core.Editing;
+using Loupe.Core.Files;
+using Loupe.Core.Imaging;
+
+namespace Loupe.Core.Tests;
+
+public sealed class TempDir : IDisposable
+{
+    public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "loupe-test-" + Guid.NewGuid().ToString("N")[..8]);
+    public TempDir() => Directory.CreateDirectory(Path);
+    public string File(params string[] parts) => System.IO.Path.Combine([Path, .. parts]);
+    public void Dispose() { try { Directory.Delete(Path, true); } catch (IOException) { } }
+}
+
+internal static class Img
+{
+    /// <summary>A gray test JPEG with a gradient and a bright square (not symmetric, so rotations differ).</summary>
+    public static byte[] Gray(int w, int h, int q = 92)
+    {
+        var px = new byte[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                px[y * w + x] = (byte)(x < w / 4 && y < h / 3 ? 240 : 40 + (x * 150 / w));
+        return TurboJpeg.Encode(px, w, h, w, TurboJpeg.PixelFormatGray, q, false);
+    }
+
+    /// <summary>Adds a JFIF APP0 with 300 dpi in front of the image data.</summary>
+    public static byte[] With300Dpi(byte[] jpeg)
+    {
+        byte[] app0 = [0xFF, 0xE0, 0, 16, (byte)'J', (byte)'F', (byte)'I', (byte)'F', 0, 1, 1, 1, 0x01, 0x2C, 0x01, 0x2C, 0, 0];
+        var segs = JpegMeta.HeaderSegments(jpeg);
+        var ms = new MemoryStream();
+        ms.Write(jpeg, 0, 2);
+        ms.Write(app0);
+        int pos = 2;
+        foreach (var s in segs.Where(s => s.Marker == 0xE0)) { ms.Write(jpeg, pos, s.Offset - pos); pos = s.Offset + s.Length; }
+        ms.Write(jpeg, pos, jpeg.Length - pos);
+        return ms.ToArray();
+    }
+}
+
+public class ImagingTests
+{
+    [Theory]
+    [InlineData(50)]
+    [InlineData(85)]
+    [InlineData(95)]
+    [InlineData(100)]
+    public void QualityIsEstimatedFromTheQuantisationTable(int q) =>
+        Assert.InRange(JpegMeta.EstimateQuality(Img.Gray(64, 48, q)), q - 1, q + 1);
+
+    [Fact]
+    public void ReEncodingKeepsDpiAndUsesTheOriginalQuality()
+    {
+        var original = Img.With300Dpi(Img.Gray(64, 48, 90));
+        Assert.Equal((300, 300), JpegMeta.Density(original));
+        var (bytes, lossless, q) = ImageEditor.Render(original, new EditSettings { Contrast = 20 }, new SaveOptions());
+        Assert.False(lossless);
+        Assert.InRange(q, 89, 91);
+        Assert.Equal((300, 300), JpegMeta.Density(bytes));
+        Assert.InRange(JpegMeta.EstimateQuality(bytes), 89, 91);
+        Assert.Equal((64, 48, true), TurboJpeg.ReadHeader(bytes));
+    }
+
+    [Theory]
+    [InlineData(90, false)]
+    [InlineData(180, false)]
+    [InlineData(270, false)]
+    [InlineData(0, true)]
+    [InlineData(90, true)]
+    [InlineData(270, true)]
+    public void LosslessTransformMatchesThePixelPath(int rotation, bool mirror)
+    {
+        var src = Img.Gray(64, 48);   // multiples of 8: perfect transform possible
+        var lossless = TurboJpeg.TransformLossless(src, TurboJpeg.TransformOp(rotation, mirror));
+        Assert.NotNull(lossless);
+        var a = TurboJpeg.DecodeNative(lossless!);
+        var b = ImageEdit.Apply(TurboJpeg.DecodeNative(src), new EditSettings { Rotation = rotation, Mirror = mirror });
+        Assert.Equal((b.Width, b.Height), (a.Width, a.Height));
+        double diff = 0;
+        for (int i = 0; i < a.Pixels.Length; i++) diff += Math.Abs(a.Pixels[i] - b.Pixels[i]);
+        Assert.True(diff / a.Pixels.Length < 3, $"mean difference {diff / a.Pixels.Length}");
+    }
+
+    [Fact]
+    public void OddSizesFallBackToReEncoding()
+    {
+        var src = Img.Gray(61, 45);
+        var (bytes, lossless, _) = ImageEditor.Render(src, new EditSettings { Rotation = 90 }, new SaveOptions());
+        Assert.False(lossless);
+        Assert.Equal((45, 61, true), TurboJpeg.ReadHeader(bytes));
+    }
+
+    [Fact]
+    public void ScaledDecodeCoversTheRequestedSize()
+    {
+        var src = Img.Gray(800, 400);
+        var d = TurboJpeg.DecodeAtLeast(src, 150);
+        Assert.Equal(200, d.Width);   // 2/8 is the smallest scale with a long side >= 150
+        var t = ImageEdit.Fit(d, 150, 150);
+        Assert.Equal((150, 75), (t.Width, t.Height));
+    }
+
+    [Fact]
+    public void ColourImagesKeepTheirChannels()
+    {
+        int w = 32, h = 16;
+        var px = new byte[w * h * 4];
+        for (int i = 0; i < w * h; i++) { px[i * 4] = 200; px[i * 4 + 1] = 100; px[i * 4 + 2] = 50; px[i * 4 + 3] = 255; }
+        var jpg = TurboJpeg.Encode(px, w, h, w * 4, TurboJpeg.PixelFormatBgra, 95, false);
+        var img = ImageEdit.Apply(TurboJpeg.DecodeNative(jpg), new EditSettings { Method = ToneMethod.AutoLevels, Rotation = 90 });
+        Assert.Equal((16, 32, 4), (img.Width, img.Height, img.Channels));
+        Assert.True(img.Pixels[0] > img.Pixels[2], "blue stays stronger than red");
+    }
+}
+
+public class EditAndBackupTests
+{
+    [Fact]
+    public void EditKeepsTheFirstOriginalAndRestoresIt()
+    {
+        using var t = new TempDir();
+        string file = t.File("roll", "a.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        var original = Img.Gray(64, 48);
+        File.WriteAllBytes(file, original);
+        var editor = new ImageEditor(new BackupStore(t.File("backups")));
+
+        Assert.True(editor.Apply(file, new EditSettings { Brightness = 30 }, new SaveOptions()).Ok);
+        Assert.True(editor.Apply(file, new EditSettings { Rotation = 90 }, new SaveOptions()).Ok);
+        Assert.True(editor.Backups.Has(file));
+        Assert.Equal((48, 64, true), TurboJpeg.ReadHeader(File.ReadAllBytes(file)));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(file)!, "*.loupe-tmp"));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(file)!));   // the archive folder stays clean
+
+        Assert.True(editor.Backups.Restore(file));
+        Assert.Equal(original, File.ReadAllBytes(file));
+        Assert.False(editor.Backups.Has(file));
+        Assert.False(Directory.Exists(t.File("backups")) && Directory.EnumerateFiles(t.File("backups"), "*", SearchOption.AllDirectories).Any());
+    }
+
+    [Fact]
+    public void BackupPathsMirrorTheFullPath()
+    {
+        var b = new BackupStore(@"C:\B");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(@"C:\B\E\roll\a.jpg", b.PathFor(@"E:\roll\a.jpg"));
+            Assert.Equal(@"C:\B\UNC\srv\share\a.jpg", b.PathFor(@"\\srv\share\a.jpg"));
+        }
+        else Assert.EndsWith(Path.Combine("roll", "a.jpg"), b.PathFor("/mnt/roll/a.jpg"));
+    }
+
+    [Fact]
+    public void ThumbnailsAreCachedAndFollowEdits()
+    {
+        using var t = new TempDir();
+        string file = t.File("a.jpg");
+        File.WriteAllBytes(file, Img.Gray(400, 200));
+        var r = new ImageRenderer(t.File("thumbs"));
+        var a = r.Thumbnail(file, 128);
+        Assert.Equal((128, 64, true), TurboJpeg.ReadHeader(a));
+        Assert.Equal(1, r.Usage().Files);
+        File.WriteAllBytes(file, Img.Gray(200, 400));
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(1));
+        Assert.Equal((64, 128, true), TurboJpeg.ReadHeader(r.Thumbnail(file, 128)));
+    }
+}
+
+public class RenameTests
+{
+    private static List<string> Make(TempDir t, string folder, params string[] names)
+    {
+        Directory.CreateDirectory(t.File(folder));
+        return names.Select(n => { string p = t.File(folder, n); File.WriteAllText(p, n); return p; }).ToList();
+    }
+
+    [Fact]
+    public void PatternCounterPerFolder()
+    {
+        using var t = new TempDir();
+        var files = Make(t, "80", "x.JPG", "y.jpg").Concat(Make(t, "81", "z.jpg")).ToList();
+        var plan = RenamePlanner.Plan(files, new RenameRules { Pattern = "{folder}_{n}" });
+        Assert.Equal(["80_00001.jpg", "80_00002.jpg", "81_00001.jpg"], plan.Items.Select(i => i.NewName));
+        Assert.True(plan.CanRun);
+    }
+
+    [Fact]
+    public void ShiftingNumbersAndSwapsNeverOverwrite()
+    {
+        using var t = new TempDir();
+        var files = Make(t, "f", "p_00001.jpg", "p_00002.jpg", "p_00003.jpg");
+        var plan = RenamePlanner.Plan(files, new RenameRules { Pattern = "p_{n}", Start = 2 });
+        Assert.True(plan.CanRun);
+        SafeMover.Run(RenamePlanner.Moves(plan));
+        Assert.Equal("p_00001.jpg", File.ReadAllText(t.File("f", "p_00002.jpg")));
+        Assert.Equal("p_00003.jpg", File.ReadAllText(t.File("f", "p_00004.jpg")));
+        Assert.False(File.Exists(t.File("f", "p_00001.jpg")));
+    }
+
+    [Fact]
+    public void ConflictsAndExistingFilesBlockTheRename()
+    {
+        using var t = new TempDir();
+        var files = Make(t, "f", "a.jpg", "b.jpg");
+        File.WriteAllText(t.File("f", "taken.jpg"), "x");
+        var same = RenamePlanner.Plan(files, new RenameRules { Pattern = "same" });
+        Assert.All(same.Items, i => Assert.Equal("conflict", i.Status));
+        var exists = RenamePlanner.Plan([files[0]], new RenameRules { Pattern = "taken" });
+        Assert.Equal("exists", exists.Items[0].Status);
+        Assert.False(exists.CanRun);
+        var bad = RenamePlanner.Plan([files[0]], new RenameRules { Pattern = "a:b" });
+        Assert.Equal("invalid", bad.Items[0].Status);
+    }
+
+    [Fact]
+    public void FindReplaceRegexAndUndo()
+    {
+        using var t = new TempDir();
+        var files = Make(t, "f", "scan 001.jpg", "scan 002.jpg");
+        var plan = RenamePlanner.Plan(files, new RenameRules { Find = @"scan (\d+)", Replace = "page_$1", Regex = true });
+        Assert.Equal(["page_001.jpg", "page_002.jpg"], plan.Items.Select(i => i.NewName));
+        var moves = RenamePlanner.Moves(plan);
+        SafeMover.Run(moves);
+        SafeMover.Undo(new UndoLog { Moves = moves });
+        Assert.True(File.Exists(t.File("f", "scan 001.jpg")));
+        Assert.False(File.Exists(t.File("f", "page_001.jpg")));
+    }
+}
+
+public class MergeTests
+{
+    private static string Part(TempDir t, string name, string prefix, int count)
+    {
+        string dir = t.File("73", name);
+        Directory.CreateDirectory(dir);
+        for (int i = 1; i <= count; i++) File.WriteAllText(Path.Combine(dir, $"{prefix}{i:00000}.jpg"), $"{name}:{i}");
+        return dir;
+    }
+
+    [Fact]
+    public void PartsAreMergedIntoANewFolderWithContinuousNumbers()
+    {
+        using var t = new TempDir();
+        var p2 = Part(t, "123_2", "73_524_0_0_123_2_", 2);
+        var p1 = Part(t, "123_1", "73_524_0_0_123_1_", 3);
+        var plan = PartMerger.Plan([p2, p1]);   // order of selection does not matter
+        Assert.True(plan.CanRun, plan.Error ?? string.Join("; ", plan.Problems));
+        Assert.Equal(t.File("73", "123"), plan.Target);
+        Assert.Equal(
+            ["73_524_0_0_123_00001.jpg", "73_524_0_0_123_00002.jpg", "73_524_0_0_123_00003.jpg", "73_524_0_0_123_00004.jpg", "73_524_0_0_123_00005.jpg"],
+            plan.Moves.Select(m => Path.GetFileName(m.To)));
+
+        var log = PartMerger.Run(plan, deleteEmptyParts: true);
+        Assert.Equal("123_1:3", File.ReadAllText(t.File("73", "123", "73_524_0_0_123_00003.jpg")));
+        Assert.Equal("123_2:1", File.ReadAllText(t.File("73", "123", "73_524_0_0_123_00004.jpg")));
+        Assert.False(Directory.Exists(p1));
+        Assert.False(Directory.Exists(p2));
+
+        SafeMover.Undo(log);
+        Assert.Equal("123_2:2", File.ReadAllText(Path.Combine(p2, "73_524_0_0_123_2_00002.jpg")));
+        Assert.False(Directory.Exists(plan.Target));
+    }
+
+    [Fact]
+    public void QuantumNamesKeepTheirPrefix()
+    {
+        using var t = new TempDir();
+        var plan = PartMerger.Plan([Part(t, "9_1", "page_", 2), Part(t, "9_2", "page_", 1)]);
+        Assert.Equal(["page_00001.jpg", "page_00002.jpg", "page_00003.jpg"], plan.Moves.Select(m => Path.GetFileName(m.To)));
+    }
+
+    [Fact]
+    public void ExistingTargetOrMixedSignaturesAreRefused()
+    {
+        using var t = new TempDir();
+        var a = Part(t, "5_1", "x_", 1);
+        var b = Part(t, "5_2", "x_", 1);
+        Directory.CreateDirectory(t.File("73", "5"));
+        File.WriteAllText(t.File("73", "5", "keep.jpg"), "!");
+        Assert.False(PartMerger.Plan([a, b]).CanRun);
+        Assert.NotNull(PartMerger.Plan([a, Part(t, "6_2", "x_", 1)]).Error);
+        Assert.NotNull(PartMerger.Plan([a]).Error);
+    }
+
+    [Theory]
+    [InlineData("73_524_0_0_123_1_", "123_1", "123", "73_524_0_0_123_")]
+    [InlineData("123_1_", "123_1", "123", "123_")]
+    [InlineData("page_", "123_1", "123", "page_")]
+    [InlineData("x1123_1_", "123_1", "123", "x1123_1_")]
+    public void PrefixReplacement(string prefix, string part, string baseName, string expected) =>
+        Assert.Equal(expected, PartMerger.ReplacePartInPrefix(prefix, part, baseName));
+}

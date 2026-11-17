@@ -1,0 +1,59 @@
+# Builds Loupe on Windows, runs the engine tests, publishes the exes and runs a smoke test of
+# the real app (WebView2 UI on a generated sample archive: browse, thumbnails, viewer, edit,
+# restore, rename, merge, undo). Download the exe from the run's "Artifacts" section.
+name: Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Engine tests
+        run: dotnet test tests/Loupe.Core.Tests -c Release
+
+      - name: Publish single-file exe (self-contained, no install needed)
+        run: >
+          dotnet publish src/Loupe.App -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none -o out/single
+
+      - name: Smoke test the real app
+        run: |
+          $out = Join-Path $pwd 'out/smoke'
+          $p = Start-Process -FilePath out/single/Loupe.exe -ArgumentList '--smoke', "`"$out`"" -PassThru
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); throw 'Smoke test timed out' }
+          if (Test-Path "$out/smoke.json") { Get-Content "$out/smoke.json" } else { Write-Host 'smoke.json missing' }
+          Write-Host "Exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed with exit code $($p.ExitCode)" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loupe-win-x64-single-exe
+          path: out/single/Loupe.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-results
+          path: |
+            out/smoke/*.png
+            out/smoke/smoke.json
+          if-no-files-found: ignore

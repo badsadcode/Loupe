@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loupe</title>
+  <link rel="stylesheet" href="css/themes.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- ============================================================ app bar -->
+  <header class="appbar">
+    <div class="brand"><span class="logo" aria-hidden="true"><i data-icon="search" data-size="16"></i></span><span class="brand-text">Loupe</span></div>
+    <span class="appbar-sep"></span>
+    <nav class="crumbs" id="crumbs" aria-label="Current folder" data-no-i18n></nav>
+    <div class="appbar-actions">
+      <button class="btn btn-ghost" data-cmd="rename" title="Rename the selected images (F2)"><i data-icon="text-cursor-input"></i>Rename</button>
+      <button class="btn btn-ghost" data-cmd="merge" title="Merge part folders such as 123_1 and 123_2 into 123"><i data-icon="merge"></i>Merge parts</button>
+      <button class="btn btn-ghost" data-cmd="undo" id="undo-btn" disabled title="Undo the last rename or merge"><i data-icon="undo-2"></i>Undo</button>
+      <span class="appbar-sep"></span>
+      <button class="icon-btn" data-cmd="settings" title="Settings and themes"><i data-icon="settings" data-size="17"></i></button>
+      <button class="icon-btn" data-cmd="help" title="Keyboard shortcuts (F1)"><i data-icon="circle-help" data-size="17"></i></button>
+    </div>
+  </header>
+
+  <!-- ============================================================ workspace -->
+  <main class="workspace" id="workspace">
+    <aside class="tree-pane" aria-label="Folders">
+      <div class="pane-head">
+        <span>Folders</span>
+        <button class="icon-btn" data-cmd="addFavorite" title="Pin a folder or network share"><i data-icon="folder-plus"></i></button>
+        <button class="icon-btn" data-cmd="refreshTree" title="Refresh drives"><i data-icon="refresh-cw"></i></button>
+      </div>
+      <div class="tree" id="tree" role="tree" data-no-i18n></div>
+    </aside>
+    <div class="splitter" id="splitter" title="Drag to resize"></div>
+
+    <section class="browser" id="browser">
+      <div class="toolbar">
+        <button class="icon-btn" data-cmd="up" title="Up one folder (Backspace)"><i data-icon="arrow-up"></i></button>
+        <button class="icon-btn" data-cmd="refresh" title="Refresh (F5)"><i data-icon="refresh-cw"></i></button>
+        <span class="tb-sep"></span>
+        <span class="count" id="count"></span>
+        <span class="grow"></span>
+        <button class="btn btn-ghost sm" data-cmd="selectAll" title="Select all images (Ctrl+A)"><i data-icon="list-checks"></i>Select all</button>
+        <button class="btn btn-ghost sm" data-cmd="selectEdited" title="Select every edited image in this folder"><i data-icon="pencil-line"></i>Select edited</button>
+        <span class="tb-sep"></span>
+        <i data-icon="grid-2x2"></i>
+        <select id="cols" class="sm" title="Columns: Auto follows the size slider (Ctrl+wheel changes either)">
+          <option value="0">Auto</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+          <option value="5">5</option><option value="6">6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option>
+        </select>
+        <input type="range" id="thumb-size" min="80" max="520" step="10" title="Thumbnail size (Ctrl+wheel)">
+        <label class="switch" title="Show file names"><input type="checkbox" id="show-names"><span></span>Names</label>
+      </div>
+      <div class="grid-wrap" id="grid-wrap" tabindex="0">
+        <div class="grid" id="grid" data-no-i18n></div>
+        <div class="empty" id="empty">
+          <i data-icon="images" data-size="40"></i>
+          <h2>Choose a folder</h2>
+          <p>Pick a drive or a pinned folder on the left. Images open with a double-click or Enter.</p>
+        </div>
+      </div>
+
+      <!-- viewer (covers the grid) -->
+      <div class="viewer" id="viewer" hidden>
+        <div class="viewbar">
+          <button class="btn btn-ghost sm" data-cmd="closeViewer" title="Back to the thumbnails (Esc)"><i data-icon="arrow-left"></i>Thumbnails</button>
+          <span class="tb-sep"></span>
+          <button class="icon-btn" data-cmd="prev" title="Previous image (X / ←)"><i data-icon="chevron-left"></i></button>
+          <span class="v-pos" id="v-pos" data-no-i18n></span>
+          <button class="icon-btn" data-cmd="next" title="Next image (C / →)"><i data-icon="chevron-right"></i></button>
+          <span class="v-name" id="v-name" data-no-i18n></span>
+          <span class="grow"></span>
+          <button class="btn btn-ghost sm toggle" id="before-btn" data-cmd="before" title="Hold B to see the file without the correction"><i data-icon="eye"></i>Before</button>
+          <span class="tb-sep"></span>
+          <button class="icon-btn" data-cmd="zoomOut" title="Zoom out (-)"><i data-icon="zoom-out"></i></button>
+          <span class="v-zoom" id="v-zoom" data-no-i18n>100%</span>
+          <button class="icon-btn" data-cmd="zoomIn" title="Zoom in (+)"><i data-icon="zoom-in"></i></button>
+          <button class="btn btn-ghost sm" data-cmd="fit" title="Fit (0)"><i data-icon="maximize"></i>Fit</button>
+          <button class="btn btn-ghost sm" data-cmd="actual" title="Actual pixels (1)">1:1</button>
+        </div>
+        <div class="stage" id="stage">
+          <img id="v-img" alt="" draggable="false">
+          <div class="v-loading" id="v-loading" hidden></div>
+          <div class="v-badge" id="v-badge" hidden>Before</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ inspector -->
+    <aside class="inspector" aria-label="Correction">
+      <div class="panel">
+        <div class="section first">
+          <h3>Correct</h3>
+          <div class="seg" id="target" role="radiogroup" aria-label="Apply to">
+            <button data-v="one" id="target-one">This image</button><button data-v="sel" id="target-sel">Selected</button>
+          </div>
+          <p class="hint" id="target-hint"></p>
+        </div>
+        <div class="section">
+          <h3>Tone</h3>
+          <label class="field">Method<select id="tone-method"></select></label>
+          <div class="slider" data-key="contrast"><span>Contrast</span><input type="number"><input type="range"></div>
+          <div class="slider" data-key="brightness"><span>Brightness</span><input type="number"><input type="range"></div>
+          <div class="slider" data-key="gamma"><span>Gamma</span><input type="number"><input type="range"></div>
+          <div class="slider" data-key="strength"><span>Strength</span><input type="number" min="0" max="100"><input type="range" min="0" max="100"></div>
+          <p class="hint" id="tone-hint"></p>
+          <div class="chip-toggles" id="tone-flags">
+            <label><input type="checkbox" value="1"><span>Shadow lift</span></label>
+            <label><input type="checkbox" value="2"><span>Highlight recovery</span></label>
+            <label><input type="checkbox" value="4"><span>S-curve</span></label>
+            <label><input type="checkbox" value="8"><span>Document rescue</span></label>
+            <label><input type="checkbox" value="16"><span>Soft contrast</span></label>
+          </div>
+        </div>
+        <div class="section">
+          <h3>Sharpen</h3>
+          <div class="field-grid two">
+            <label class="field">Mode
+              <select id="sharp-mode"><option value="0">Soft</option><option value="1">Unsharp</option><option value="2">Text crisp</option><option value="3">High-pass strong</option></select>
+            </label>
+            <div class="slider" data-key="sharpen"><span>Amount</span><input type="number" min="0" max="100"><input type="range" min="0" max="100"></div>
+          </div>
+        </div>
+        <div class="section">
+          <h3>Orientation</h3>
+          <div class="orient">
+            <button class="btn" data-cmd="rotL" title="Rotate left (Shift+R)"><i data-icon="rotate-ccw"></i></button>
+            <button class="btn" data-cmd="rotR" title="Rotate right (R)"><i data-icon="rotate-cw"></i></button>
+            <button class="btn toggle" id="mirror-btn" data-cmd="mirror" title="Mirror (M)"><i data-icon="flip-horizontal-2"></i></button>
+            <button class="btn toggle" id="negative-btn" data-cmd="negative" title="Negative (N)"><i data-icon="contrast"></i></button>
+            <span class="orient-state" id="orient-state" data-no-i18n></span>
+          </div>
+        </div>
+        <div class="section">
+          <div class="btn-row">
+            <button class="btn btn-primary grow" data-cmd="apply" id="apply-btn" title="Save the correction into the file (Ctrl+S); the original is kept"><i data-icon="save"></i><span id="apply-label">Save to file</span></button>
+            <button class="btn" data-cmd="reset" title="Back to neutral (no correction)"><i data-icon="rotate-ccw"></i>Reset</button>
+          </div>
+          <label class="switch"><input type="checkbox" id="keep-edit"><span></span>Keep the correction after saving</label>
+          <button class="btn btn-ghost" data-cmd="restore" id="restore-btn" title="Put the original file back (Ctrl+Shift+Z)"><i data-icon="history"></i><span id="restore-label">Restore original</span></button>
+        </div>
+        <div class="info-card" id="info" hidden data-no-i18n></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span class="status-dot"></span>
+    <span id="status">Ready</span>
+    <div class="job" id="job" hidden>
+      <span id="job-text"></span>
+      <div class="progress"><div class="progress-bar" id="job-bar"></div></div>
+      <button class="btn btn-ghost xs" data-cmd="cancelJob">Stop</button>
+    </div>
+    <span class="grow"></span>
+    <span id="version" data-no-i18n></span>
+  </footer>
+
+  <!-- ============================================================ rename dialog -->
+  <dialog class="modal wide" id="rename-dlg">
+    <div class="modal-head"><h2><i data-icon="text-cursor-input"></i>Rename</h2><span class="chip" id="rn-scope" data-no-i18n></span>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="rename-body">
+      <div class="rename-rules">
+        <label class="field">New name
+          <input type="text" id="rn-pattern" spellcheck="false" data-no-i18n>
+          <small data-i18n-html>Tokens: <code>{name}</code> current name · <code>{folder}</code> folder name · <code>{n}</code> counter (<code>{n:3}</code> = 3 digits). The extension stays.</small>
+        </label>
+        <div class="chip-row" data-no-i18n>
+          <button class="chip-btn" data-token="{name}">{name}</button>
+          <button class="chip-btn" data-token="{folder}">{folder}</button>
+          <button class="chip-btn" data-token="{n}">{n}</button>
+          <button class="chip-btn" data-preset="archive" title="Striplight PRO naming: folder name + counter">{folder}_{n}</button>
+        </div>
+        <div class="field-grid">
+          <label class="field">Start<input type="number" id="rn-start"></label>
+          <label class="field">Step<input type="number" id="rn-step"></label>
+          <label class="field">Digits<input type="number" id="rn-digits" min="0" max="12"></label>
+        </div>
+        <label class="switch"><input type="checkbox" id="rn-perfolder"><span></span>Counter starts again in every folder</label>
+        <div class="section">
+          <h3>Find and replace</h3>
+          <div class="field-grid two">
+            <label class="field">Find<input type="text" id="rn-find" spellcheck="false" data-no-i18n></label>
+            <label class="field">Replace with<input type="text" id="rn-replace" spellcheck="false" data-no-i18n></label>
+          </div>
+          <div class="switch-row">
+            <label class="switch"><input type="checkbox" id="rn-regex"><span></span>Regular expression</label>
+            <label class="switch"><input type="checkbox" id="rn-case-sens"><span></span>Match case</label>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <label class="field">Letters
+            <select id="rn-case"><option value="keep">Keep</option><option value="lower">lowercase</option><option value="upper">UPPERCASE</option><option value="title">Title Case</option></select>
+          </label>
+          <label class="field">Extension
+            <select id="rn-ext"><option value="keep">Keep</option><option value="lower" data-no-i18n>.jpg</option><option value="upper" data-no-i18n>.JPG</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="rename-preview">
+        <div class="rp-summary" id="rn-summary"></div>
+        <div class="table-wrap"><table class="plan" id="rn-table" data-no-i18n><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <p class="hint"><i data-icon="info"></i>Nothing is overwritten: names that clash are shown in red and block the rename. Undo puts the old names back.</p>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="rn-run" disabled><i data-icon="check"></i>Rename</button>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ merge dialog -->
+  <dialog class="modal" id="merge-dlg">
+    <div class="modal-head"><h2><i data-icon="merge"></i>Merge parts</h2>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="merge-body">
+      <div class="merge-flow" id="mg-flow" data-no-i18n></div>
+      <div class="problems" id="mg-problems"></div>
+      <div class="table-wrap short"><table class="plan" id="mg-table" data-no-i18n><thead></thead><tbody></tbody></table></div>
+      <div class="switch-list">
+        <label class="switch"><input type="checkbox" id="mg-delete"><span></span>Delete the empty part folders afterwards</label>
+        <label class="switch"><input type="checkbox" id="mg-confirm"><span></span>Ask before deleting them</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <p class="hint"><i data-icon="info"></i>The files move into a new folder and are renumbered; nothing is overwritten. Undo moves them back.</p>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="mg-run" disabled><i data-icon="merge"></i>Merge</button>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ settings dialog -->
+  <dialog class="modal" id="settings-dlg">
+    <div class="modal-head"><h2><i data-icon="settings"></i>Settings</h2>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="settings-body">
+      <div class="section first">
+        <h3>Theme</h3>
+        <div class="themes" id="themes"></div>
+      </div>
+      <div class="section">
+        <h3>Language</h3>
+        <div class="seg" id="lang" role="radiogroup" aria-label="Language" data-no-i18n>
+          <button data-v="en">English</button><button data-v="pl">Polski</button>
+        </div>
+        <button class="btn btn-ghost" data-cmd="openLang" title="Your own fixes to the translation survive updates"><i data-icon="languages"></i>Edit translation</button>
+      </div>
+      <div class="section">
+        <h3>Saving corrections</h3>
+        <label class="field">JPEG quality
+          <select id="set-quality">
+            <option value="0">Same as the original file</option><option value="100">100</option><option value="95">95</option><option value="90">90</option><option value="85">85</option>
+          </select>
+        </label>
+        <label class="switch"><input type="checkbox" id="set-lossless"><span></span>Rotate and mirror without re-compressing when possible</label>
+        <label class="field">Files saved at once<input type="number" id="set-workers" min="1" max="16"></label>
+      </div>
+      <div class="section">
+        <h3>Originals of edited files</h3>
+        <p class="hint">Kept outside the archive folders, so delivered folders stay clean. "Restore original" brings them back.</p>
+        <div class="path-row"><code id="st-backup-path" data-no-i18n></code><span class="chip" id="st-backup-size" data-no-i18n></span></div>
+        <div class="btn-row wrap">
+          <button class="btn" data-cmd="openBackups"><i data-icon="external-link"></i>Open folder</button>
+          <button class="btn" data-cmd="pickBackups"><i data-icon="folder-open"></i>Change…</button>
+          <button class="btn btn-danger" data-cmd="clearBackups"><i data-icon="trash-2"></i>Forget originals</button>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Thumbnail cache</h3>
+        <div class="path-row"><code id="st-thumb-path" data-no-i18n></code><span class="chip" id="st-thumb-size" data-no-i18n></span></div>
+        <div class="btn-row"><button class="btn" data-cmd="clearThumbs"><i data-icon="trash-2"></i>Clear cache</button></div>
+      </div>
+      <div class="section about" id="about" data-no-i18n></div>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ shortcuts -->
+  <dialog class="modal" id="help-dlg">
+    <div class="modal-head"><h2><i data-icon="keyboard"></i>Keyboard shortcuts</h2>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="help-body">
+      <div class="keys">
+        <h3>Browsing</h3>
+        <p><kbd data-no-i18n>←</kbd> <kbd data-no-i18n>→</kbd> <kbd data-no-i18n>↑</kbd> <kbd data-no-i18n>↓</kbd><span>Move between thumbnails</span></p>
+        <p><kbd data-no-i18n>Enter</kbd><span>Open image or folder</span></p>
+        <p><kbd data-no-i18n>Backspace</kbd><span>Up one folder</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>A</kbd><span>Select all images</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>/<kbd data-no-i18n>Shift</kbd>+click<span>Add to selection / select a range</span></p>
+        <p><kbd data-no-i18n>F2</kbd><span>Rename</span></p>
+        <p><kbd data-no-i18n>F5</kbd><span>Refresh</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>Z</kbd><span>Undo the last rename or merge</span></p>
+      </div>
+      <div class="keys">
+        <h3>Viewer</h3>
+        <p><kbd data-no-i18n>X</kbd> / <kbd data-no-i18n>C</kbd><span>Previous / next image</span></p>
+        <p><kbd data-no-i18n>0</kbd> / <kbd data-no-i18n>1</kbd><span>Fit / actual pixels</span></p>
+        <p><kbd data-no-i18n>+</kbd> / <kbd data-no-i18n>-</kbd><span>Zoom</span></p>
+        <p><kbd data-no-i18n>B</kbd> (hold)<span>Before: without the correction</span></p>
+        <p><kbd data-no-i18n>R</kbd> / <kbd data-no-i18n>Shift</kbd>+<kbd data-no-i18n>R</kbd><span>Rotate right / left</span></p>
+        <p><kbd data-no-i18n>M</kbd> / <kbd data-no-i18n>N</kbd><span>Mirror / negative</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>S</kbd><span>Save the correction to the file</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>Shift</kbd>+<kbd data-no-i18n>Z</kbd><span>Restore the original</span></p>
+        <p><kbd data-no-i18n>Esc</kbd><span>Back to the thumbnails</span></p>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast-host" id="toasts"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
