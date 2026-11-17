@@ -875,6 +875,8 @@ function renameRules() {
     digits: Math.max(0, Math.min(12, Number($('#rn-digits').value) || 0)),
     counterPerFolder: $('#rn-perfolder').checked,
     reverse: $('#rn-reverse').checked,
+    root: state.path,
+    pathSeparator: $('#rn-pathsep').value || '_',
   };
 }
 
@@ -891,18 +893,38 @@ function loadRenameRules(r) {
   $('#rn-digits').value = r.digits ?? 5;
   $('#rn-perfolder').checked = r.counterPerFolder ?? true;
   $('#rn-reverse').checked = !!r.reverse;
+  $('#rn-pathsep').value = r.pathSeparator ?? '_';
 }
 
-function openRename() {
+// Which images the rename works on: selected folders (with everything inside them), the selected
+// images, or all images of this folder — with "Include images in subfolders" the whole tree below it.
+async function collectRenamePaths() {
+  const dirs = selectedFolders().map((f) => f.path);
   const sel = selectedImages();
-  renamePaths = (sel.length ? sel : state.images).map((it) => it.path);
-  if (!renamePaths.length) { toast(t('There are no images to rename here.')); return; }
-  $('#rn-scope').textContent = sel.length ? tn(sel.length, '{n} selected image', '{n} selected images') : tn(renamePaths.length, 'all {n} image in this folder', 'all {n} images in this folder');
+  if (dirs.length) {
+    renamePaths = await run('fs.collect', { folders: dirs, recursive: true });
+    $('#rn-scope').textContent = tn(renamePaths.length, '{n} image in the selected folders', '{n} images in the selected folders');
+  } else if ($('#rn-sub').checked && !sel.length) {
+    renamePaths = await run('fs.collect', { folders: [state.path], recursive: true });
+    $('#rn-scope').textContent = tn(renamePaths.length, '{n} image in this folder and its subfolders', '{n} images in this folder and its subfolders');
+  } else {
+    renamePaths = (sel.length ? sel : state.images).map((it) => it.path);
+    $('#rn-scope').textContent = sel.length ? tn(sel.length, '{n} selected image', '{n} selected images') : tn(renamePaths.length, 'all {n} image in this folder', 'all {n} images in this folder');
+  }
+  $('#rn-sub').disabled = dirs.length > 0 || sel.length > 0;
+}
+
+async function openRename() {
+  if (!state.path) return;
   loadRenameRules(state.settings.renameRules || {});
+  await collectRenamePaths();
+  if (!renamePaths.length && !state.folders.length) { toast(t('There are no images to rename here.')); return; }
   $('#rename-dlg').showModal();
   planRename();
   $('#rn-pattern').focus();
 }
+
+$('#rn-sub').addEventListener('change', async () => { await collectRenamePaths(); planRename(); });
 
 const planRename = debounce(async () => {
   let plan;
@@ -937,6 +959,10 @@ $$('#rename-dlg [data-token]').forEach((b) => b.addEventListener('click', () => 
   inp.setSelectionRange(s + b.dataset.token.length, s + b.dataset.token.length);
   planRename();
 }));
+$('#rename-dlg [data-preset="structure"]').addEventListener('click', () => {
+  $('#rn-pattern').value = '{path}_{n}'; $('#rn-digits').value = 5; $('#rn-start').value = 1; $('#rn-step').value = 1;
+  $('#rn-perfolder').checked = true; planRename();
+});
 $('#rename-dlg [data-preset="archive"]').addEventListener('click', () => {
   $('#rn-pattern').value = '{folder}_{n}'; $('#rn-digits').value = 5; $('#rn-start').value = 1; $('#rn-step').value = 1;
   $('#rn-perfolder').checked = true; planRename();
@@ -1020,6 +1046,51 @@ $('#mg-run').addEventListener('click', async () => {
     const k = state.items.findIndex((it) => it.name === baseName(r.target));
     if (k >= 0) selectIndex(k);
   } catch { planMerge(); }
+});
+
+// ------------------------------------------------------------------ files → folders
+
+let sortPaths = [];
+
+function sortRules() {
+  return {
+    separator: $('#so-sep').value || '_',
+    counterParts: Math.max(0, Math.min(10, Number($('#so-counter').value) || 0)),
+    keepName: $('#so-keep').checked,
+  };
+}
+
+function openSort() {
+  const sel = selectedImages();
+  sortPaths = (sel.length ? sel : state.images).map((it) => it.path);
+  if (!sortPaths.length) { toast(t('There are no images to sort here.')); return; }
+  $('#so-scope').textContent = sel.length ? tn(sel.length, '{n} selected image', '{n} selected images') : tn(sortPaths.length, 'all {n} image in this folder', 'all {n} images in this folder');
+  if (!$('#so-sep').value) { $('#so-sep').value = '_'; $('#so-counter').value = 1; $('#so-keep').checked = true; }
+  $('#sort-dlg').showModal();
+  planSort();
+}
+
+const planSort = debounce(async () => {
+  let p;
+  try { p = await call('sort.plan', { paths: sortPaths, root: state.path, rules: sortRules() }); } catch (e) { toast(e.message, 'error'); return; }
+  $('#so-summary').innerHTML = p.error ? `<span class="bad">${esc(t(p.error))}</span>`
+    : `<b>${esc(tn(p.count, '{n} file will be moved', '{n} files will be moved'))}</b> · ${esc(tn(p.newFolders, '{n} new folder', '{n} new folders'))}`;
+  $('#so-problems').innerHTML = (p.problems || []).slice(0, 20).map((x) => `<span>${esc(x)}</span>`).join('');
+  $('#so-table').tHead.innerHTML = `<tr><th>${esc(t('Current name'))}</th><th></th><th>${esc(t('New place'))}</th></tr>`;
+  $('#so-table').tBodies[0].innerHTML = (p.sample || []).map((r) => `<tr class="ok"><td>${esc(r.from)}</td><td class="arrow">→</td><td class="to">${esc(r.to)}</td></tr>`).join('');
+  $('#so-run').disabled = !p.canRun;
+}, 140);
+
+$$('#sort-dlg input').forEach((el) => el.addEventListener('input', planSort));
+$('#so-run').addEventListener('click', async () => {
+  $('#so-run').disabled = true;
+  try {
+    const r = await run('sort.run', { paths: sortPaths, root: state.path, rules: sortRules() });
+    $('#sort-dlg').close();
+    toast(t('Moved {count} files into {folders} new folders', { count: r.count, folders: r.folders }), 'ok');
+    setUndo(r.undo);
+    await openFolder(state.path);
+  } catch { planSort(); }
 });
 
 // ------------------------------------------------------------------ slice dialog
@@ -1185,6 +1256,7 @@ const TOOLS = {
   undo: { icon: 'undo-2', label: 'Undo rename / merge / slice (Ctrl+Z)', run: () => undo() },
   rename: { icon: 'text-cursor-input', label: 'Rename (F2)', run: () => openRename() },
   merge: { icon: 'merge', label: 'Merge parts', run: () => openMerge() },
+  sortFolders: { icon: 'folder-tree', label: 'Files into folders', run: () => openSort() },
   rescanList: { icon: 'clipboard-list', label: 'Rescan list', run: () => openRescan() },
   selectAll: { icon: 'list-checks', label: 'Select all (Ctrl+A)', run: () => commands.selectAll() },
   zoomIn: { icon: 'zoom-in', label: 'Zoom in', run: () => (state.viewer ? viewer.zoomBy(1.25) : zoomGrid(true)) },
@@ -1395,6 +1467,7 @@ const commands = {
   negative: () => { orient.negative = !orient.negative; paintOrient(); controlsChanged(); },
   apply: saveChanges,
   rescanToggle: toggleRescan,
+  sortFolders: openSort,
   popup: togglePopup,
   toolbarSep: () => saveToolbar([...toolbarIds(), '|']),
   toolbarDefault: () => saveToolbar([...DEFAULT_TOOLBAR]),
@@ -1696,6 +1769,15 @@ window.__loupeSelfTest = async () => {
     ok('slice', await until(() => state.images.length === 7 && state.images[6].name === '73_524_0_0_80_00007.jpg'));
     await undo();
     ok('slice-undo', await until(() => state.images.length === 6 && state.images.map((it) => it.name).join() === before6.join()));
+
+    // files → folders: 80's files go into 73\524\0\0\80 below it; then undo
+    state.selected.clear();
+    openSort();
+    ok('sort-plan', await until(() => !$('#so-run').disabled));
+    $('#so-run').click();
+    ok('sort', await until(() => state.images.length === 0 && state.folders.some((f) => f.name === '73')));
+    await undo();
+    ok('sort-undo', await until(() => state.images.length === 6 && state.folders.length === 0));
 
     await openFolder(sig);
     ok('open-parent', state.folders.length === 3, { path: state.path });

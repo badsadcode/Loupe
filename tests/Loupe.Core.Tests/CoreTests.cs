@@ -427,3 +427,46 @@ public class ReverseRenameTests
         Assert.Equal("was 2", File.ReadAllText(t.File("f", "p_00002.jpg")));
     }
 }
+
+public class StructureTests
+{
+    [Fact]
+    public void NamesFromTheFolderStructure()
+    {
+        using var t = new TempDir();
+        string dir = t.File("delivery", "73", "524", "0", "0", "80");
+        Directory.CreateDirectory(dir);
+        foreach (var n in new[] { "a.jpg", "b.jpg" }) File.WriteAllText(Path.Combine(dir, n), n);
+        var files = FolderSorter.CollectImages([t.File("delivery")], recursive: true);
+        Assert.Equal(2, files.Count);
+        var plan = RenamePlanner.Plan(files, new RenameRules { Pattern = "{path}_{n}", Root = t.File("delivery") });
+        Assert.Equal(["73_524_0_0_80_00001.jpg", "73_524_0_0_80_00002.jpg"], plan.Items.Select(i => i.NewName));
+        var last3 = RenamePlanner.Plan(files, new RenameRules { Pattern = "{path:3}-{n:3}", PathSeparator = "." });
+        Assert.Equal("0.0.80-001.jpg", last3.Items[0].NewName);
+    }
+
+    [Fact]
+    public void FoldersFromTheFileNamesAndUndo()
+    {
+        using var t = new TempDir();
+        string flat = t.File("flat");
+        Directory.CreateDirectory(flat);
+        foreach (var n in new[] { "73_524_0_0_80_00001.jpg", "73_524_0_0_80_00002.jpg", "73_524_0_0_81_00001.jpg" })
+            File.WriteAllText(Path.Combine(flat, n), n);
+        var files = Directory.GetFiles(flat).OrderBy(x => x).ToList();
+        var plan = FolderSorter.Plan(files, flat, new SortRules());
+        Assert.True(plan.CanRun, string.Join(";", plan.Problems));
+        var log = FolderSorter.Run(plan);
+        Assert.True(File.Exists(Path.Combine(flat, "73", "524", "0", "0", "80", "73_524_0_0_80_00002.jpg")));
+        Assert.True(File.Exists(Path.Combine(flat, "73", "524", "0", "0", "81", "73_524_0_0_81_00001.jpg")));
+
+        SafeMover.Undo(log);
+        Assert.Equal(3, Directory.GetFiles(flat).Length);
+        Assert.Empty(Directory.GetDirectories(flat));     // created folders are gone again
+
+        var counterOnly = FolderSorter.Plan(files, flat, new SortRules { KeepName = false });
+        Assert.Contains(counterOnly.Moves, m => m.To.EndsWith(Path.Combine("80", "00001.jpg")));
+        var bad = FolderSorter.Plan([Path.Combine(flat, "73_524_0_0_80_00001.jpg")], flat, new SortRules { CounterParts = 6 });
+        Assert.NotEmpty(bad.Problems);
+    }
+}

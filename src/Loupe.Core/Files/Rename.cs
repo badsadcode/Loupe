@@ -6,13 +6,19 @@ namespace Loupe.Core.Files;
 /// <summary>
 /// Batch rename rules, applied in this order: pattern → find/replace → letter case.
 /// Pattern tokens: <c>{name}</c> the current name (without extension), <c>{folder}</c> the
-/// folder the file is in, <c>{n}</c> the counter (<c>{n:3}</c> = 3 digits). The extension is
+/// folder the file is in, <c>{n}</c> the counter (<c>{n:3}</c> = 3 digits), <c>{path}</c> the folder
+/// structure below the folder the rename started from, joined with "_" (<c>{path:5}</c> = the
+/// last 5 folder levels). The extension is
 /// kept and added automatically.
 /// </summary>
 public sealed record RenameRules
 {
     public string Pattern { get; init; } = "{name}";
     public string Find { get; init; } = "";
+    /// <summary>Folder the rename started from: <c>{path}</c> is the folder structure below it.</summary>
+    public string Root { get; init; } = "";
+    /// <summary>Joins the folder names in <c>{path}</c> (73\524\0\0\80 → 73_524_0_0_80).</summary>
+    public string PathSeparator { get; init; } = "_";
     public string Replace { get; init; } = "";
     public bool Regex { get; init; }
     public bool MatchCase { get; init; }
@@ -41,7 +47,7 @@ public sealed record RenamePlan(List<RenameItem> Items, int Changes, int Problem
 
 public static class RenamePlanner
 {
-    private static readonly Regex Token = new(@"\{(name|folder|n)(?::(\d{1,2}))?\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex Token = new(@"\{(name|folder|n|path)(?::(\d{1,2}))?\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
@@ -92,6 +98,7 @@ public static class RenamePlanner
                 {
                     "name" => name,
                     "folder" => folder,
+                    "path" => PathToken(dir, r, m.Groups[2].Success ? int.Parse(m.Groups[2].Value) : 0),
                     _ => Counter(n, m.Groups[2].Success ? int.Parse(m.Groups[2].Value) : r.Digits),
                 });
             if (!string.IsNullOrEmpty(r.Find))
@@ -133,6 +140,24 @@ public static class RenamePlanner
         int changes = items.Count(i => i.Status == "ok");
         int problems = items.Count(i => i.Status is "invalid" or "conflict" or "exists");
         return new RenamePlan(items, changes, problems, null);
+    }
+
+    /// <summary>Folder names joined: the last <paramref name="levels"/>, or all below <see cref="RenameRules.Root"/>.</summary>
+    internal static string PathToken(string dir, RenameRules r, int levels)
+    {
+        var parts = dir.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (parts.Count > 0 && parts[0].EndsWith(':')) parts.RemoveAt(0);          // drive letter
+        List<string> pick;
+        if (levels > 0) pick = parts.Skip(Math.Max(0, parts.Count - levels)).ToList();
+        else
+        {
+            var root = r.Root.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (root.Count > 0 && root[0].EndsWith(':')) root.RemoveAt(0);
+            bool under = root.Count <= parts.Count && root.Select((x, i) => string.Equals(x, parts[i], StringComparison.OrdinalIgnoreCase)).All(b => b);
+            pick = under && root.Count > 0 ? parts.Skip(root.Count).ToList() : [];
+            if (pick.Count == 0 && parts.Count > 0) pick = [parts[^1]];             // files right in the root: their folder
+        }
+        return string.Join(r.PathSeparator ?? "_", pick);
     }
 
     private static string Counter(int n, int digits) =>

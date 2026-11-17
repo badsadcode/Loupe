@@ -269,6 +269,37 @@ public sealed class AppController
             });
         });
 
+        // ---- folder structure ↔ file names
+        _bridge.OnAsync("fs.collect", async args =>
+        {
+            var folders = BridgeHost.Arg(args, "folders", new List<string>());
+            bool recursive = BridgeHost.Arg(args, "recursive", true);
+            return await Task.Run(() => FolderSorter.CollectImages(folders, recursive));
+        });
+        _bridge.OnAsync("sort.plan", async args =>
+        {
+            var paths = BridgeHost.Arg(args, "paths", new List<string>());
+            var rules = BridgeHost.Arg(args, "rules", new SortRules());
+            string root = BridgeHost.Arg(args, "root", "");
+            var p = await Task.Run(() => FolderSorter.Plan(paths, root, rules));
+            return SortDto(p);
+        });
+        _bridge.OnAsync("sort.run", async args =>
+        {
+            var paths = BridgeHost.Arg(args, "paths", new List<string>());
+            var rules = BridgeHost.Arg(args, "rules", new SortRules());
+            string root = BridgeHost.Arg(args, "root", "");
+            return await Task.Run(() =>
+            {
+                var plan = FolderSorter.Plan(paths, root, rules);
+                if (!plan.CanRun) throw new BridgeException(plan.Error ?? string.Join(" ", plan.Problems));
+                var log = FolderSorter.Run(plan, Backups) with { Title = Loc.T("{n} files into folders", ("n", plan.Moves.Count)) };
+                _rescan.Follow(log.Moves);
+                SaveUndo(log);
+                return new { count = plan.Moves.Count, folders = plan.NewFolders.Count, undo = log.Title };
+            });
+        });
+
         // ---- merge parts
         _bridge.OnAsync("merge.plan", async args =>
         {
@@ -416,6 +447,12 @@ public sealed class AppController
     {
         drives = FolderScanner.Drives(),
         favorites = _settings.Favorites.Select(f => new { name = Path.GetFileName(f.TrimEnd('\\', '/')) is { Length: > 0 } n ? n : f, path = f, exists = Directory.Exists(f) }),
+    };
+
+    private static object SortDto(SortPlan p) => new
+    {
+        p.Error, p.Problems, p.CanRun, count = p.Moves.Count, newFolders = p.NewFolders.Count,
+        sample = p.Moves.Take(400).Select(m => new { from = Path.GetFileName(m.From), to = Path.GetRelativePath(p.Root, m.To) }),
     };
 
     private static object SliceDto(SlicePlan p)

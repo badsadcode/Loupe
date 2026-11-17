@@ -27,6 +27,10 @@ Striplight PRO engine (libjpeg-turbo + the Striplight tone methods).
 - **Batch rename** with a live preview: pattern (`{name}`, `{folder}`, `{n}`), counter, find /
   replace (also regular expressions), letter case. Clashing names block the rename; nothing is
   ever overwritten; Undo puts the old names back.
+- **Folder structure ↔ file names**: the rename token `{path}` puts the folders below the starting
+  folder into the name (`73\524\0\0\80\x.jpg` → `73_524_0_0_80_00001.jpg`; `{path:5}` = last 5
+  levels), also for a whole tree ("Include images in subfolders" or selected folders). **To folders**
+  does the reverse: `73_524_0_0_80_00001.jpg` moves into `73\524\0\0\80\`. Both with preview and Undo.
 - **Merge parts**: `123_1` + `123_2` → a new folder `123`, files renamed the Striplight PRO way
   (`73_524_0_0_123_1_00001.jpg` → `73_524_0_0_123_00001.jpg`) and numbered continuously.
   Empty part folders can be deleted afterwards (with an optional confirmation). Undo moves everything back.

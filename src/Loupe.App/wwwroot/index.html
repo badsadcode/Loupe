@@ -16,6 +16,7 @@
     <div class="appbar-actions">
       <button class="btn btn-ghost" data-cmd="rename" title="Rename the selected images (F2)"><i data-icon="text-cursor-input"></i>Rename</button>
       <button class="btn btn-ghost" data-cmd="merge" title="Merge part folders such as 123_1 and 123_2 into 123"><i data-icon="merge"></i>Merge parts</button>
+      <button class="btn btn-ghost" data-cmd="sortFolders" title="Move files into folders built from their names (73_524_0_0_80_00001.jpg → 73\524\0\0\80)"><i data-icon="folder-tree"></i>To folders</button>
       <button class="btn btn-ghost" data-cmd="undo" id="undo-btn" disabled title="Undo the last rename or merge"><i data-icon="undo-2"></i>Undo</button>
       <button class="btn btn-ghost" data-cmd="rescanList" title="Images marked for rescanning: report with microfilm numbers"><i data-icon="clipboard-list"></i>Rescan list<span class="chip count-chip" id="rescan-count" hidden data-no-i18n></span></button>
       <span class="appbar-sep"></span>
@@ -203,13 +204,16 @@
       <div class="rename-rules">
         <label class="field">New name
           <input type="text" id="rn-pattern" spellcheck="false" data-no-i18n>
-          <small data-i18n-html>Tokens: <code>{name}</code> current name · <code>{folder}</code> folder name · <code>{n}</code> counter (<code>{n:3}</code> = 3 digits). The extension stays.</small>
+          <small data-i18n-html>Tokens: <code>{name}</code> current name · <code>{folder}</code> folder name · <code>{n}</code> counter (<code>{n:3}</code> = 3 digits) · <code>{path}</code> folders below this one (<code>{path:5}</code> = last 5). The extension stays.</small>
         </label>
         <div class="chip-row" data-no-i18n>
           <button class="chip-btn" data-token="{name}">{name}</button>
           <button class="chip-btn" data-token="{folder}">{folder}</button>
           <button class="chip-btn" data-token="{n}">{n}</button>
+          <button class="chip-btn" data-token="{path}">{path}</button>
+          <button class="chip-btn" data-token="{path:5}">{path:5}</button>
           <button class="chip-btn" data-preset="archive" title="Striplight PRO naming: folder name + counter">{folder}_{n}</button>
+          <button class="chip-btn" data-preset="structure" title="Archive structure in the name: folders below this one + counter">{path}_{n}</button>
         </div>
         <div class="field-grid">
           <label class="field">Start<input type="number" id="rn-start"></label>
@@ -217,6 +221,8 @@
           <label class="field">Digits<input type="number" id="rn-digits" min="0" max="12"></label>
         </div>
         <label class="switch"><input type="checkbox" id="rn-perfolder"><span></span>Counter starts again in every folder</label>
+        <label class="switch" title="Rename the images of every subfolder too (with {path} the folder structure goes into the names)"><input type="checkbox" id="rn-sub"><span></span>Include images in subfolders</label>
+        <label class="field">Folder separator in {path}<input type="text" id="rn-pathsep" maxlength="3" spellcheck="false" data-no-i18n></label>
         <label class="switch" title="For a roll scanned backwards: the last file gets the first number"><input type="checkbox" id="rn-reverse"><span></span>Reverse order (last file gets the first number)</label>
         <div class="section">
           <h3>Find and replace</h3>
@@ -267,6 +273,32 @@
       <p class="hint"><i data-icon="info"></i>The files move into a new folder and are renumbered; nothing is overwritten. Undo moves them back.</p>
       <button class="btn" data-close>Cancel</button>
       <button class="btn btn-primary" id="mg-run" disabled><i data-icon="merge"></i>Merge</button>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ files → folders -->
+  <dialog class="modal wide" id="sort-dlg">
+    <div class="modal-head"><h2><i data-icon="folder-tree"></i>Files into folders</h2><span class="chip" id="so-scope" data-no-i18n></span>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="rename-body">
+      <div class="rename-rules">
+        <p class="hint block" data-i18n-html>The parts of each file name become nested folders, the way Striplight PRO's archive export names them: <code>73_524_0_0_80_00001.jpg</code> → <code>73\524\0\0\80\</code>. The folders are made inside the current folder.</p>
+        <div class="field-grid two">
+          <label class="field">Separator<input type="text" id="so-sep" maxlength="3" spellcheck="false" data-no-i18n></label>
+          <label class="field">Parts at the end that are not folders<input type="number" id="so-counter" min="0" max="10"></label>
+        </div>
+        <label class="switch"><input type="checkbox" id="so-keep"><span></span>Keep the full file name (off: only the counter, e.g. 00001.jpg)</label>
+      </div>
+      <div class="rename-preview">
+        <div class="rp-summary" id="so-summary"></div>
+        <div class="problems" id="so-problems"></div>
+        <div class="table-wrap"><table class="plan" id="so-table" data-no-i18n><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <p class="hint"><i data-icon="info"></i>Nothing is overwritten. Undo moves the files back and removes the folders that were made.</p>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="so-run" disabled><i data-icon="folder-tree"></i>Move into folders</button>
     </div>
   </dialog>
 
