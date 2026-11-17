@@ -309,3 +309,16 @@ table.plan td.why { font-family: var(--font); white-space: normal; }
 .toast.error::before { background: var(--danger); }
 .toast.ok::before { background: var(--ok); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* ============================================================ narrow windows
+   The middle column can get small (laptop screens, wide tree). Toolbars then drop their
+   button texts (icons stay, the tooltips still explain) instead of spilling over the panel. */
+.browser { overflow: hidden; container-type: inline-size; }
+.toolbar, .viewbar { min-width: 0; overflow: hidden; }
+@container (max-width: 860px) {
+  .toolbar .btn.sm:not(.keep), .viewbar .btn.sm:not(.keep) { font-size: 0; gap: 0; padding: 0 7px; }
+  .toolbar .switch { font-size: 0; gap: 0; }
+}
+@container (max-width: 640px) {
+  .v-name, .count, .toolbar #thumb-size { display: none; }
+}

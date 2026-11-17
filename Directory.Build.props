@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Company>Bad Ideas Works</Company>
     <Product>Loupe</Product>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <!-- Lets the WPF project build (not run) on Linux/macOS build agents. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
