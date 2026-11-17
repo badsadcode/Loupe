@@ -25,6 +25,8 @@ public sealed record RenameRules
     public int Digits { get; init; } = 5;
     /// <summary>The counter starts again in every folder.</summary>
     public bool CounterPerFolder { get; init; } = true;
+    /// <summary>Count from the last file to the first (a roll scanned backwards): the last file gets the start number.</summary>
+    public bool Reverse { get; init; }
 }
 
 public sealed record RenameItem(string From, string To, string NewName, string Status, string? Message)
@@ -60,19 +62,28 @@ public static class RenamePlanner
             catch (ArgumentException e) { return new RenamePlan([], 0, 0, "Invalid regular expression: " + e.Message); }
         }
 
+        // Counter values first (in reverse order when asked), then the names in the order shown.
         var counters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int global = r.Start;
-        var raw = new List<(string From, string To, string NewName, string? Problem)>();
-        foreach (string from in files)
+        var numbers = new int[files.Count];
+        for (int k = 0; k < files.Count; k++)
         {
-            string dir = Path.GetDirectoryName(from) ?? "";
-            int n;
+            int i = r.Reverse ? files.Count - 1 - k : k;
+            string d = Path.GetDirectoryName(files[i]) ?? "";
             if (r.CounterPerFolder)
             {
-                n = counters.TryGetValue(dir, out int c) ? c : r.Start;
-                counters[dir] = n + r.Step;
+                numbers[i] = counters.TryGetValue(d, out int c) ? c : r.Start;
+                counters[d] = numbers[i] + r.Step;
             }
-            else { n = global; global += r.Step; }
+            else { numbers[i] = global; global += r.Step; }
+        }
+
+        var raw = new List<(string From, string To, string NewName, string? Problem)>();
+        for (int i = 0; i < files.Count; i++)
+        {
+            string from = files[i];
+            string dir = Path.GetDirectoryName(from) ?? "";
+            int n = numbers[i];
 
             string name = Path.GetFileNameWithoutExtension(from), ext = Path.GetExtension(from);
             string folder = Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));

@@ -377,6 +377,8 @@ PL = {
     "Select an image in the main window": "Wybierz obraz w głównym oknie",
     "This window shows the image chosen there, with the correction preview. X / C: previous / next, F11: full screen.": "To okno pokazuje wybrany tam obraz z podglądem poprawki. X / C: poprzedni / następny, F11: pełny ekran.",
     "The viewer window could not start: {error}": "Nie udało się uruchomić okna podglądu: {error}",
+    "For a roll scanned backwards: the last file gets the first number": "Dla rolki zeskanowanej od końca: ostatni plik dostaje pierwszy numer",
+    "Reverse order (last file gets the first number)": "Odwrotna kolejność (ostatni plik dostaje pierwszy numer)",
     "Folder does not exist yet: {path}": "Folder jeszcze nie istnieje: {path}",
 }
 

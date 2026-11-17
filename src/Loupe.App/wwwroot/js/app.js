@@ -874,6 +874,7 @@ function renameRules() {
     step: Number($('#rn-step').value) || 1,
     digits: Math.max(0, Math.min(12, Number($('#rn-digits').value) || 0)),
     counterPerFolder: $('#rn-perfolder').checked,
+    reverse: $('#rn-reverse').checked,
   };
 }
 
@@ -889,6 +890,7 @@ function loadRenameRules(r) {
   $('#rn-step').value = r.step ?? 1;
   $('#rn-digits').value = r.digits ?? 5;
   $('#rn-perfolder').checked = r.counterPerFolder ?? true;
+  $('#rn-reverse').checked = !!r.reverse;
 }
 
 function openRename() {

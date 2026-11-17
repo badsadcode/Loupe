@@ -409,3 +409,21 @@ public class CropAndSliceTests
         Assert.Contains(plan.Renames, m => Path.GetFileName(m.From) == "p_1.jpg" && Path.GetFileName(m.To) == "p_01.jpg");
     }
 }
+
+public class ReverseRenameTests
+{
+    [Fact]
+    public void ReverseOrderSwapsTheNumbersSafely()
+    {
+        using var t = new TempDir();
+        Directory.CreateDirectory(t.File("f"));
+        var files = Enumerable.Range(1, 3).Select(i => { string p = t.File("f", $"p_{i:00000}.jpg"); File.WriteAllText(p, $"was {i}"); return p; }).ToList();
+        var plan = RenamePlanner.Plan(files, new RenameRules { Pattern = "p_{n}", Reverse = true });
+        Assert.Equal(["p_00003.jpg", "p_00002.jpg", "p_00001.jpg"], plan.Items.Select(i => i.NewName));
+        Assert.True(plan.CanRun);
+        SafeMover.Run(RenamePlanner.Moves(plan));
+        Assert.Equal("was 3", File.ReadAllText(t.File("f", "p_00001.jpg")));
+        Assert.Equal("was 1", File.ReadAllText(t.File("f", "p_00003.jpg")));
+        Assert.Equal("was 2", File.ReadAllText(t.File("f", "p_00002.jpg")));
+    }
+}
