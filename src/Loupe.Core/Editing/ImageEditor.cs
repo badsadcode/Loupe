@@ -162,6 +162,17 @@ public sealed class ImageRenderer(string thumbRoot)
         return Path.Combine(ThumbRoot, hash[..2], hash + ".jpg");
     }
 
+    /// <summary>
+    /// Thumbnail with a correction previewed on it: the cached thumbnail, corrected and re-encoded
+    /// (adaptive tones are worked out on the small image, close to but not exactly the full result).
+    /// </summary>
+    public byte[] Thumbnail(string file, int size, EditSettings? edit)
+    {
+        var plain = Thumbnail(file, size);
+        if (edit is null || edit.IsNoOp) return plain;
+        return TurboJpeg.Encode(ImageEdit.Apply(TurboJpeg.DecodeNative(plain), edit), 85);
+    }
+
     /// <summary>Thumbnail JPEG (longer side <paramref name="size"/>), from the cache when possible.</summary>
     public byte[] Thumbnail(string file, int size)
     {

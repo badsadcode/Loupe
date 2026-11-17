@@ -12,6 +12,8 @@ namespace Loupe.App.Services;
 
 public sealed record FileFailure(string Path, string Error);
 
+public sealed record EditItem(string Path, EditSettings Edit);
+
 /// <summary>
 /// The page's commands (see wwwroot/js/app.js). Long jobs (applying an edit to many files)
 /// run on the thread pool and report progress with "job.progress" events.
@@ -22,6 +24,7 @@ public sealed class AppController
     private readonly BridgeHost _bridge;
     private readonly AppSettings _settings = AppSettings.Load();
     private CancellationTokenSource? _job;
+    private readonly RescanList _rescan = new(AppSettings.RescanFile);
 
     public SmokeTest? Smoke { get; init; }
     public List<string> JsErrors { get; } = [];
@@ -121,7 +124,7 @@ public sealed class AppController
                 folders = listing.Folders,
                 images = listing.Images.Select(i => new
                 {
-                    i.Name, i.Path, i.Size, modified = i.Modified.Ticks, edited = Backups.Has(i.Path),
+                    i.Name, i.Path, i.Size, modified = i.Modified.Ticks, edited = Backups.Has(i.Path), rescan = _rescan.Contains(i.Path),
                 }),
                 otherFiles = listing.OtherFiles,
                 part = PartMerger.ParsePart(Path.GetFileName(listing.Path)) is not null,
@@ -187,6 +190,15 @@ public sealed class AppController
             var save = new SaveOptions { Quality = _settings.SaveQuality, LosslessWhenPossible = _settings.LosslessRotate };
             return await RunJob(Loc.T("Saving"), paths, p => Editor.Apply(p, edit, save) is var r && r.Ok ? null : r.Error ?? "?");
         });
+        // Global + own corrections from the page: every file with its own settings.
+        _bridge.OnAsync("edit.applyMany", async args =>
+        {
+            var items = BridgeHost.Arg(args, "items", new List<EditItem>());
+            var byPath = items.Where(i => i.Path.Length > 0).GroupBy(i => i.Path).ToDictionary(g => g.Key, g => g.Last().Edit);
+            var save = new SaveOptions { Quality = _settings.SaveQuality, LosslessWhenPossible = _settings.LosslessRotate };
+            return await RunJob(Loc.T("Saving"), byPath.Keys.ToList(),
+                p => Editor.Apply(p, byPath[p], save) is var r && r.Ok ? null : r.Error ?? "?");
+        });
         _bridge.OnAsync("edit.restore", async args =>
         {
             var paths = BridgeHost.Arg(args, "paths", new List<string>());
@@ -214,6 +226,7 @@ public sealed class AppController
                 if (!plan.CanRun) throw new BridgeException(plan.Error ?? Loc.T("The new names have problems; nothing was renamed."));
                 var moves = RenamePlanner.Moves(plan);
                 SafeMover.Run(moves, Backups);
+                _rescan.Follow(moves);
                 var log = new UndoLog { Kind = "rename", Title = Loc.T("Rename of {n} files", ("n", moves.Count)), Moves = moves };
                 SaveUndo(log);
                 return new { count = moves.Count, undo = log.Title, renamed = moves };
@@ -236,6 +249,7 @@ public sealed class AppController
                 var plan = PartMerger.Plan(folders);
                 if (!plan.CanRun) throw new BridgeException(plan.Error ?? string.Join(" ", plan.Problems));
                 var log = PartMerger.Run(plan, deleteEmpty, Backups);
+                _rescan.Follow(log.Moves);
                 SaveUndo(log);
                 return new { target = plan.Target, count = plan.Moves.Count, deleted = log.DeletedFolders, undo = log.Title };
             });
@@ -248,8 +262,43 @@ public sealed class AppController
             var (log, file) = LastUndoWithFile();
             if (log is null || file is null) throw new BridgeException(Loc.T("Nothing to undo."));
             await Task.Run(() => SafeMover.Undo(log, Backups));
+            _rescan.Follow(log.Moves.Select(m => new MovePair(m.To, m.From)));
             File.Delete(file);
             return new { title = log.Title, next = LastUndo()?.Title, folder = log.Moves.Count > 0 ? Path.GetDirectoryName(log.Moves[0].From) : null };
+        });
+
+        // ---- rescan list (images beyond repair)
+        _bridge.On("rescan.list", _ => RescanDto());
+        _bridge.On("rescan.set", args =>
+        {
+            var paths = BridgeHost.Arg(args, "paths", new List<string>());
+            _rescan.Set(paths, BridgeHost.Arg(args, "on", true), BridgeHost.Arg(args, "reason", ""));
+            return RescanDto();
+        });
+        _bridge.On("rescan.update", args =>
+        {
+            _rescan.Update(BridgeHost.Arg(args, "path", ""), BridgeHost.Arg<string?>(args, "reason", null), BridgeHost.Arg<string?>(args, "microfilm", null));
+            return RescanDto();
+        });
+        _bridge.On("rescan.clear", _ => { _rescan.Clear(); return RescanDto(); });
+        _bridge.On("rescan.copy", args =>
+        {
+            bool headers = BridgeHost.Arg(args, "headers", _settings.RescanHeaders);
+            _settings.RescanHeaders = headers;
+            var rows = _rescan.Rows(RescanRoots());
+            Clipboard.SetText(RescanList.ToTsv(rows, headers ? RescanHeader() : null));
+            return rows.Count;
+        });
+        _bridge.On("rescan.saveCsv", _ =>
+        {
+            var dlg = new SaveFileDialog
+            {
+                Title = Loc.T("Save the rescan list"), Filter = Loc.T("CSV for Excel") + " (*.csv)|*.csv",
+                FileName = $"rescan-{DateTime.Now:yyyy-MM-dd}.csv",
+            };
+            if (dlg.ShowDialog(_host.Window) != true) return null;
+            File.WriteAllBytes(dlg.FileName, RescanList.ToCsv(_rescan.Rows(RescanRoots()), RescanHeader()));
+            return dlg.FileName;
         });
 
         // ---- storage
@@ -276,6 +325,28 @@ public sealed class AppController
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private IEnumerable<string> RescanRoots() =>
+        _settings.Favorites.Concat(FolderScanner.Drives().Select(d => d.Path));
+
+    private static string[] RescanHeader() =>
+        [Loc.T("Microfilm number"), Loc.T("Folder"), Loc.T("File"), Loc.T("Reason"), Loc.T("Marked"), Loc.T("Full path")];
+
+    private object RescanDto()
+    {
+        var roots = RescanRoots().ToList();
+        return new
+        {
+            headers = _settings.RescanHeaders,
+            entries = _rescan.Entries
+                .OrderBy(e => Path.GetDirectoryName(e.Path), NaturalComparer.Instance).ThenBy(e => Path.GetFileName(e.Path), NaturalComparer.Instance)
+                .Select(e => new
+                {
+                    e.Path, e.Reason, e.Microfilm, marked = e.Marked.ToString("yyyy-MM-dd HH:mm"),
+                    folder = RescanList.RelativeFolder(e.Path, roots), file = Path.GetFileName(e.Path), exists = File.Exists(e.Path),
+                }),
+        };
+    }
 
     private object Roots() => new
     {

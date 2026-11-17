@@ -233,6 +233,9 @@ async function openFolder(path, { keepSelection = false, focusName = null } = {}
   if (!path) return;
   let r;
   try { r = await call('fs.list', { path }); } catch (e) { toast(e.message, 'error'); return; }
+  if (!samePath(r.path, state.path) && pendingCount() &&
+      !confirm(tn(pendingCount(), 'The correction of {n} image is not saved. Leave this folder and discard it?', 'The corrections of {n} images are not saved. Leave this folder and discard them?'))) return;
+  if (!samePath(r.path, state.path)) { state.own.clear(); state.global = { ...NEUTRAL }; loadControls(state.global); $('#target').value = 'all'; }
   const prevNames = keepSelection ? new Set([...state.selected].map((i) => state.items[i]?.name)) : null;
   const sameFolder = samePath(r.path, state.path);
   state.path = r.path;
@@ -254,16 +257,33 @@ async function openFolder(path, { keepSelection = false, focusName = null } = {}
 }
 
 function thumbUrl(it) {
-  return `${IMG}/thumb?p=${encodeURIComponent(it.path)}&s=${thumbPx()}&v=${it.modified}`;
+  const e = editJson(effective(it));
+  return `${IMG}/thumb?p=${encodeURIComponent(it.path)}&s=${thumbPx()}&v=${it.modified}${e ? `&e=${encodeURIComponent(e)}` : ''}`;
 }
+
+/** Corrections changed: visible thumbnails reload with the preview, the others when they scroll into view. */
+const refreshThumbs = debounce(() => {
+  const view = $('#grid-wrap').getBoundingClientRect();
+  for (const tile of $$('#grid .tile.image')) {
+    const it = state.items[Number(tile.dataset.i)];
+    const img = tile.querySelector('img');
+    if (!it || !img) continue;
+    const url = thumbUrl(it);
+    if (img.dataset.src === url) continue;
+    img.dataset.src = url;
+    const r = tile.getBoundingClientRect();
+    if (r.bottom > view.top - 300 && r.top < view.bottom + 300) img.src = url;
+    else if (img.getAttribute('src')) thumbObserver.observe(img);
+  }
+}, 180);
 
 // Thumbnail resolution from the tile width actually shown (Auto: the slider; N columns: grid width / N).
 function tileWidth() {
   const n = state.settings.gridColumns || 0;
-  if (!n) return state.settings.thumbSize || 180;
-  return ($('#grid-wrap').clientWidth - 28 - (n - 1) * 10) / n;
+  if (!n) return (state.settings.thumbSize || 180) * 1.25;   // Auto tiles stretch up to the next column
+  return ($('#grid-wrap').clientWidth - 16 - (n - 1) * 6) / n;
 }
-const thumbPx = () => (tileWidth() * (window.devicePixelRatio || 1) > 300 ? 512 : 256);
+const thumbPx = () => { const w = tileWidth() * (window.devicePixelRatio || 1); return w > 600 ? 1024 : w > 280 ? 512 : 256; };
 
 /** Applies the column / size settings to the grid (Auto: as many columns as the size allows). */
 function applyGridLayout(rerender) {
@@ -296,8 +316,22 @@ function zoomGrid(bigger) {
   saveLayout();
 }
 
+// Tiles take the shape of the folder's typical image (landscape spreads, portrait pages), so the
+// thumbnails fill them with as little frame as possible.
+let aspects = [];
+function noteAspect(r) {
+  if (!r || aspects.length >= 15) return;
+  aspects.push(r);
+  if (aspects.length < 3 && aspects.length < state.images.length) return;
+  const sorted = [...aspects].sort((a, b) => a - b);
+  const med = Math.max(0.6, Math.min(1.8, sorted[Math.floor(sorted.length / 2)]));
+  $('#grid').style.setProperty('--pic-aspect', med.toFixed(3));
+}
+
 function renderGrid() {
   const grid = $('#grid');
+  aspects = [];
+  grid.style.removeProperty('--pic-aspect');
   thumbObserver?.disconnect();
   grid.innerHTML = '';
   $('#empty').hidden = state.items.length > 0 || !state.path ? state.items.length > 0 : false;
@@ -325,10 +359,13 @@ function renderGrid() {
         ${isPartName(it.name) ? `<span class="chip part">${esc(t('part'))}</span>` : ''}`;
     } else {
       tile.innerHTML = `<div class="pic"><img alt="" draggable="false"></div><div class="name" title="${esc(it.name)}">${esc(it.name)}</div>
-        ${it.edited ? `<span class="badge" title="${esc(t('Edited — the original is kept'))}">${icon('pencil-line', 12)}</span>` : ''}`;
+        ${it.edited ? `<span class="badge" title="${esc(t('Edited — the original is kept'))}">${icon('pencil-line', 12)}</span>` : ''}
+        <span class="own-dot" title="${esc(t('Own correction (not saved yet)'))}"></span>
+        <span class="flag" title="${esc(t('Marked for rescanning'))}">${icon('flag', 12)}</span>`;
+      tile.classList.toggle('rescan', !!it.rescan);
       const img = tile.querySelector('img');
       img.dataset.src = thumbUrl(it);
-      img.onload = () => img.classList.add('ok');
+      img.onload = () => { img.classList.add('ok'); noteAspect(img.naturalWidth / img.naturalHeight); };
       img.onerror = () => img.parentElement.classList.add('err');
       thumbObserver.observe(img);
     }
@@ -346,7 +383,7 @@ function paintSelection() {
     el.classList.toggle('focus', i === state.focus);
   });
   updateCount();
-  refreshTarget();
+  selectionChanged();
 }
 
 function updateCount() {
@@ -419,7 +456,7 @@ let viewToken = 0;
 function viewUrl(it, { full = false, edit = true } = {}) {
   const r = $('#stage').getBoundingClientRect();
   const max = full ? 0 : Math.ceil(Math.max(r.width, r.height, 800) * (window.devicePixelRatio || 1));
-  const e = edit && !state.before ? editParam() : '';
+  const e = edit && !state.before ? editJson(effective(it)) : '';
   return `${IMG}/view?p=${encodeURIComponent(it.path)}&max=${max}&v=${it.modified}${e ? `&e=${encodeURIComponent(e)}` : ''}`;
 }
 
@@ -455,6 +492,7 @@ async function showImage(index, { keepView = false } = {}) {
   if (changed) { state.focus = i; state.selected = new Set([i]); state.anchor = i; refreshInspector(); }
   $('#v-pos').textContent = `${index + 1} / ${state.images.length}`;
   $('#v-name').textContent = it.name;
+  paintViewerFlag();
   const token = ++viewToken;
   const img = $('#v-img');
   const url = viewUrl(it, { full: wantFull });
@@ -479,7 +517,7 @@ async function showImage(index, { keepView = false } = {}) {
 function prefetch(index) {
   for (const k of [index + 1, index - 1, index + 2]) {
     const it = state.images[k];
-    if (it) { const p = new Image(); p.src = viewUrl(it, { edit: false }); }
+    if (it) { const p = new Image(); p.src = viewUrl(it); }
   }
 }
 
@@ -497,12 +535,20 @@ function onViewChange(v) {
 }
 
 // ------------------------------------------------------------------ correction (edit) panel
+//
+// As in Striplight PRO: a GLOBAL correction for every image in the folder, and OWN corrections
+// for single images, locked against later global changes. Everything is a preview (thumbnails
+// and viewer) until "Save changes" writes it into the files; the originals are kept.
 
 const QUANTUM = { contrast: [-128, 255, 64], brightness: [-128, 127, 0], gamma: [-255, 255, 0] };
 const STRIPLIGHT = { contrast: [-100, 100, 0], brightness: [-100, 100, 0], gamma: [10, 300, 100] };
 const isQuantum = (m) => m === 1 || m === 4;
 const isAdaptive = (m) => m >= 5 && m <= 8;
+const NEUTRAL = Object.freeze({ method: 0, flags: 0, contrast: 0, brightness: 0, gamma: 100, strength: 50, sharpenMode: 1, sharpen: 0, negative: false, rotation: 0, mirror: false });
 const orient = { rotation: 0, mirror: false, negative: false };
+state.global = { ...NEUTRAL };
+state.own = new Map();        // path → own correction (not saved yet)
+let loadingControls = false;
 
 const slider = (key) => $(`.slider[data-key="${key}"]`);
 const sliderInputs = (el) => [el.querySelector('input[type=range]'), el.querySelector('input[type=number]')];
@@ -539,6 +585,23 @@ function gatherEdit() {
   };
 }
 
+/** Shows a correction in the panel (without treating it as a change). */
+function loadControls(e) {
+  loadingControls = true;
+  $('#tone-method').value = e.method;
+  applyRanges(e.method, false);
+  setSlider('contrast', e.contrast);
+  setSlider('brightness', e.brightness);
+  setSlider('gamma', e.gamma);
+  setSlider('strength', e.strength);
+  setSlider('sharpen', e.sharpen);
+  $('#sharp-mode').value = e.sharpenMode;
+  $$('#tone-flags input').forEach((c) => { c.checked = (e.flags & Number(c.value)) !== 0; });
+  Object.assign(orient, { rotation: e.rotation, mirror: e.mirror, negative: e.negative });
+  paintOrient();
+  loadingControls = false;
+}
+
 // Same rule as ToneAdjust.IsNoOp in the engine.
 function toneIsNoOp(e) {
   if (e.flags !== 0) return false;
@@ -547,27 +610,9 @@ function toneIsNoOp(e) {
   if (e.method >= 6) return e.strength <= 0 && e.contrast === 0 && e.brightness === 0 && e.gamma === 100;
   return e.contrast === 0 && e.brightness === 0 && e.gamma === 100;
 }
-
-function isNeutral(e) {
-  return toneIsNoOp(e) && e.sharpen <= 0 && !e.negative && e.rotation === 0 && !e.mirror;
-}
-
-function editParam() {
-  const e = gatherEdit();
-  return isNeutral(e) ? '' : JSON.stringify(e);
-}
-
-function resetEdit() {
-  $('#tone-method').value = 0;
-  applyRanges(0, true);
-  setSlider('strength', 50);
-  setSlider('sharpen', 0);
-  $('#sharp-mode').value = 1;
-  $$('#tone-flags input').forEach((c) => { c.checked = false; });
-  Object.assign(orient, { rotation: 0, mirror: false, negative: false });
-  paintOrient();
-  editChanged();
-}
+const isNeutral = (e) => toneIsNoOp(e) && e.sharpen <= 0 && !e.negative && e.rotation === 0 && !e.mirror;
+const effective = (it) => state.own.get(it.path) ?? state.global;
+const editJson = (e) => (e && !isNeutral(e) ? JSON.stringify(e) : '');
 
 function paintOrient() {
   $('#mirror-btn').setAttribute('aria-pressed', String(orient.mirror));
@@ -579,46 +624,115 @@ function paintOrient() {
   $('#orient-state').textContent = bits.join(' · ');
 }
 
-function editChanged() {
-  const neutral = isNeutral(gatherEdit());
-  $('#apply-btn').disabled = neutral || !targetPaths().length || state.job;
-  refreshView();
+/** A control changed: it becomes the global correction, or the own correction of the selected images. */
+function controlsChanged() {
+  if (loadingControls) return;
+  const e = gatherEdit();
+  if (targetMode() === 'sel') for (const it of selectedImages()) state.own.set(it.path, { ...e });
+  else state.global = e;
+  previewsChanged();
 }
 
-function rotate(d) { orient.rotation = (orient.rotation + d + 360) % 360; paintOrient(); editChanged(); }
+function previewsChanged() {
+  refreshThumbs();
+  refreshView();
+  refreshTarget();
+}
 
-// "Apply to": the image in the viewer / focused tile, or every selected image.
+function rotate(d) { orient.rotation = (orient.rotation + d + 360) % 360; paintOrient(); controlsChanged(); }
+
 function targetMode() { return $('#target').value; }
 
-function targetPaths() {
-  if (targetMode() === 'sel') return selectedImages().map((it) => it.path);
-  const it = state.viewer ? state.images[state.vIndex] : focusItem();
-  return it?.type === 'image' ? [it.path] : [];
+/** Switches between the global correction and own corrections of the selected images. */
+function setTarget(mode) {
+  if (mode === 'sel' && !selectedImages().length) mode = 'all';
+  $('#target').value = mode;
+  loadControls(mode === 'sel' ? (state.own.get(firstSelected()?.path) ?? state.global) : state.global);
+  refreshTarget();
+}
+
+const firstSelected = () => {
+  const f = focusItem();
+  return f?.type === 'image' && state.selected.has(state.focus) ? f : selectedImages()[0];
+};
+
+/** Selection changed: in "Selected" mode the panel shows the (focused) selected image's correction. */
+function selectionChanged() {
+  if (targetMode() === 'sel') {
+    if (!selectedImages().length) setTarget('all');
+    else loadControls(state.own.get(firstSelected()?.path) ?? state.global);
+  }
+  refreshTarget();
+}
+
+/** Files that "Save changes" writes: own corrections, and the global one for every other image. */
+function pendingItems() {
+  const items = [];
+  for (const it of state.images) {
+    const e = effective(it);
+    if (!isNeutral(e)) items.push({ path: it.path, edit: e });
+  }
+  return items;
 }
 
 function refreshTarget() {
-  const n = selectedImages().length;
+  const n = selectedImages().length, sel = targetMode() === 'sel';
   $('#target-sel').textContent = n ? `${t('Selected')} (${n.toLocaleString()})` : t('Selected');
-  $('#target-sel').disabled = n < 2 && targetMode() !== 'sel';
-  if (targetMode() === 'sel' && n === 0) $('#target').value = 'one';
-  const paths = targetPaths();
-  $('#target-hint').textContent = targetMode() === 'sel'
-    ? tn(paths.length, 'The correction is saved into {n} image. The preview shows the one in the viewer.', 'The correction is saved into {n} images. The preview shows the one in the viewer.')
-    : '';
-  $('#apply-label').textContent = paths.length > 1 ? tn(paths.length, 'Save to {n} file', 'Save to {n} files') : t('Save to file');
-  const edited = targetMode() === 'sel' ? selectedImages().filter((it) => it.edited).length : (focusItem()?.edited ? 1 : 0);
+  $('#target-sel').disabled = !n;
+  $('#target-hint').textContent = sel
+    ? t('Changes give the selected images their own correction (orange); later global changes leave them as they are.')
+    : t('Changes apply to every image in this folder; the thumbnails show the preview. Images with their own correction keep it.');
+  $('[data-panel]')?.classList.toggle('own', sel);
+  const items = pendingItems();
+  const own = state.images.filter((it) => state.own.has(it.path) && !isNeutral(state.own.get(it.path))).length;
+  const parts = [];
+  if (!isNeutral(state.global)) parts.push(tn(state.images.length - state.images.filter((it) => state.own.has(it.path)).length, 'global correction on {n} image', 'global correction on {n} images'));
+  if (own) parts.push(tn(own, '{n} own correction', '{n} own corrections'));
+  $('#pending').textContent = parts.length ? `${t('Not saved yet')}: ${parts.join(' · ')}` : '';
+  $('#apply-label').textContent = items.length > 1 ? tn(items.length, 'Save changes ({n} file)', 'Save changes ({n} files)') : t('Save changes');
+  $('#apply-btn').disabled = !items.length || state.job;
+  $('#discard-btn').hidden = !items.length && !state.own.size;
+  $('#reset-label').textContent = sel ? t('Use global') : t('Reset');
+  $('#reset-btn').title = sel ? t('The selected images follow the global correction again') : t('Back to neutral (no correction)');
+  const edited = (sel ? selectedImages() : [focusItem()]).filter((it) => it?.edited).length;
   $('#restore-btn').disabled = !edited || state.job;
   $('#restore-label').textContent = edited > 1 ? tn(edited, 'Restore {n} original', 'Restore {n} originals') : t('Restore original');
-  $('#apply-btn').disabled = isNeutral(gatherEdit()) || !paths.length || state.job;
+  for (const tile of $$('#grid .tile.image')) {
+    const it = state.items[Number(tile.dataset.i)];
+    tile.classList.toggle('own', !!it && state.own.has(it.path));
+  }
 }
 
-async function applyEdit() {
-  const paths = targetPaths();
-  const edit = gatherEdit();
-  if (!paths.length || isNeutral(edit) || state.job) return;
-  const r = await run('edit.apply', { paths, edit });
+function resetCorrection() {
+  if (targetMode() === 'sel') {
+    for (const it of selectedImages()) state.own.delete(it.path);
+    loadControls(state.global);
+  } else {
+    state.global = { ...NEUTRAL };
+    loadControls(state.global);
+  }
+  previewsChanged();
+}
+
+function discardChanges() {
+  state.own.clear();
+  state.global = { ...NEUTRAL };
+  loadControls(state.global);
+  previewsChanged();
+}
+
+const pendingCount = () => pendingItems().length;
+
+async function saveChanges() {
+  const items = pendingItems();
+  if (!items.length || state.job) return;
+  if (items.length > 1 && !confirm(tn(items.length, 'Save the corrections into {n} file? The originals are kept.', 'Save the corrections into {n} files? The originals are kept.'))) return;
+  const r = await run('edit.applyMany', { items });
   reportJob(r, 'Saved {n} file', 'Saved {n} files');
-  if (!$('#keep-edit').checked) resetEdit();
+  const failed = new Set(r.failures.map((f) => f.path));
+  for (const it of items) if (!failed.has(it.path)) state.own.delete(it.path);
+  if (!failed.size) state.global = { ...NEUTRAL };
+  loadControls(targetMode() === 'sel' ? (state.own.get(firstSelected()?.path) ?? state.global) : state.global);
   await reloadAfterChange();
 }
 
@@ -835,6 +949,81 @@ $('#mg-run').addEventListener('click', async () => {
   } catch { planMerge(); }
 });
 
+// ------------------------------------------------------------------ rescan list
+
+function setRescanCount(n) {
+  $('#rescan-count').textContent = n;
+  $('#rescan-count').hidden = !n;
+}
+
+/** Marks the selected images (or the one in the viewer) for rescanning; if all are marked already, unmarks them. */
+async function toggleRescan() {
+  const its = state.viewer ? [state.images[state.vIndex]] : (selectedImages().length ? selectedImages() : [focusItem()]);
+  const list = its.filter((it) => it?.type === 'image');
+  if (!list.length) return;
+  const on = !list.every((it) => it.rescan);
+  const r = await run('rescan.set', { paths: list.map((it) => it.path), on });
+  for (const it of list) it.rescan = on;
+  for (const tile of $$('#grid .tile.image')) tile.classList.toggle('rescan', !!state.items[Number(tile.dataset.i)]?.rescan);
+  setRescanCount(r.entries.length);
+  paintViewerFlag();
+  toast(on ? tn(list.length, 'Marked {n} image for rescanning', 'Marked {n} images for rescanning') : tn(list.length, 'Unmarked {n} image', 'Unmarked {n} images'), 'ok');
+}
+
+function paintViewerFlag() {
+  const it = state.viewer ? state.images[state.vIndex] : null;
+  $('#v-flag').hidden = !it?.rescan;
+  $('#v-flag-btn').setAttribute('aria-pressed', String(!!it?.rescan));
+}
+
+async function openRescan() {
+  renderRescan(await run('rescan.list'));
+  $('#rescan-dlg').showModal();
+}
+
+function renderRescan(r) {
+  setRescanCount(r.entries.length);
+  $('#rs-headers').checked = !!r.headers;
+  $('#rs-count').textContent = tn(r.entries.length, '{n} image', '{n} images');
+  $('#rs-empty').hidden = r.entries.length > 0;
+  const tb = $('#rs-table');
+  tb.tHead.innerHTML = r.entries.length ? `<tr><th>${esc(t('Microfilm number'))}</th><th>${esc(t('Folder'))}</th><th>${esc(t('File'))}</th><th>${esc(t('Reason'))}</th><th>${esc(t('Marked'))}</th><th></th></tr>` : '';
+  tb.tBodies[0].innerHTML = r.entries.map((e, i) => `<tr class="${e.exists ? '' : 'gone'}" data-i="${i}">
+      <td class="film"><input type="text" data-k="microfilm" value="${esc(e.microfilm)}" placeholder="${esc(t('e.g. 123-213'))}" spellcheck="false"></td>
+      <td class="mono" title="${esc(e.path)}">${esc(e.folder)}</td>
+      <td class="go" title="${esc(e.exists ? t('Show this image') : t('The file is no longer there'))}">${esc(e.file)}</td>
+      <td class="why"><input type="text" data-k="reason" value="${esc(e.reason)}" list="rs-reasons" placeholder="${esc(t('Why?'))}"></td>
+      <td class="mono">${esc(e.marked)}</td>
+      <td><button class="icon-btn" data-remove title="${esc(t('Remove from the list'))}">${icon('x', 14)}</button></td></tr>`).join('');
+  tb.dataset.paths = JSON.stringify(r.entries.map((e) => e.path));
+  // Translate the reason suggestions once.
+  $$('#rs-reasons option').forEach((o) => { if (!o.dataset.done) { o.value = t(o.value); o.dataset.done = '1'; } });
+}
+
+$('#rs-table').addEventListener('change', async (e) => {
+  const input = e.target.closest('input[data-k]');
+  if (!input) return;
+  const path = JSON.parse($('#rs-table').dataset.paths)[Number(input.closest('tr').dataset.i)];
+  renderRescan(await run('rescan.update', { path, [input.dataset.k]: input.value }));
+});
+$('#rs-table').addEventListener('click', async (e) => {
+  const tr = e.target.closest('tr[data-i]');
+  if (!tr) return;
+  const path = JSON.parse($('#rs-table').dataset.paths)[Number(tr.dataset.i)];
+  if (e.target.closest('[data-remove]')) {
+    renderRescan(await run('rescan.set', { paths: [path], on: false }));
+    const it = state.images.find((x) => x.path === path);
+    if (it) { it.rescan = false; renderGrid(); }
+  } else if (e.target.closest('td.go') && !tr.classList.contains('gone')) {
+    $('#rescan-dlg').close();
+    const sep = sepOf(path);
+    await openFolder(path.slice(0, path.lastIndexOf(sep)) || path, { focusName: baseName(path) });
+    const k = state.items.findIndex((it) => it.path === path);
+    if (k >= 0) selectIndex(k);
+  }
+});
+$('#rs-headers').addEventListener('change', (e) => saveSettings({ rescanHeaders: e.target.checked }));
+
 // ------------------------------------------------------------------ undo
 
 function setUndo(title) {
@@ -931,10 +1120,24 @@ const commands = {
   before: () => setBefore(!state.before),
   rotL: () => rotate(-90),
   rotR: () => rotate(90),
-  mirror: () => { orient.mirror = !orient.mirror; paintOrient(); editChanged(); },
-  negative: () => { orient.negative = !orient.negative; paintOrient(); editChanged(); },
-  apply: applyEdit,
-  reset: resetEdit,
+  mirror: () => { orient.mirror = !orient.mirror; paintOrient(); controlsChanged(); },
+  negative: () => { orient.negative = !orient.negative; paintOrient(); controlsChanged(); },
+  apply: saveChanges,
+  rescanToggle: toggleRescan,
+  rescanList: openRescan,
+  rescanCopy: async () => {
+    const n = await run('rescan.copy', { headers: $('#rs-headers').checked });
+    toast(tn(n, 'Copied {n} row — paste it into Excel', 'Copied {n} rows — paste them into Excel'), 'ok');
+  },
+  rescanCsv: async () => { const f = await run('rescan.saveCsv'); if (f) toast(t('Saved {file}', { file: baseName(f) }), 'ok'); },
+  rescanClear: async () => {
+    if (!confirm(t('Remove every image from the rescan list?'))) return;
+    renderRescan(await run('rescan.clear'));
+    state.images.forEach((it) => { it.rescan = false; });
+    renderGrid();
+  },
+  reset: resetCorrection,
+  discard: () => { if (confirm(t('Discard every correction that is not saved yet?'))) discardChanges(); },
   restore: restoreOriginals,
   cancelJob: () => call('job.cancel').catch(() => {}),
   openBackups: () => run('storage.openBackups'),
@@ -973,7 +1176,8 @@ document.addEventListener('keydown', (e) => {
   if (k === 'F1') { e.preventDefault(); commands.help(); return; }
   if (k === 'F2') { e.preventDefault(); openRename(); return; }
   if (k === 'F5') { e.preventDefault(); commands.refresh(); return; }
-  if (ctrl && k.toLowerCase() === 's') { e.preventDefault(); applyEdit(); return; }
+  if (ctrl && k.toLowerCase() === 's') { e.preventDefault(); saveChanges(); return; }
+  if (ctrl && k.toLowerCase() === 'r') { e.preventDefault(); toggleRescan(); return; }
   if (ctrl && e.shiftKey && k.toLowerCase() === 'z') { e.preventDefault(); restoreOriginals(); return; }
   if (ctrl && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (typing) return;
@@ -1000,9 +1204,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'Backspace' || (e.altKey && k === 'ArrowUp')) { e.preventDefault(); commands.up(); return; }
   if (k === 'Enter') { e.preventDefault(); activate(state.focus); return; }
   if (k === 'Escape') { state.selected.clear(); paintSelection(); return; }
-  if (k.toLowerCase() === 'r' && !ctrl) { rotate(e.shiftKey ? -90 : 90); return; }
-  if (k.toLowerCase() === 'm' && !ctrl) { commands.mirror(); return; }
-  if (k.toLowerCase() === 'n' && !ctrl) { commands.negative(); return; }
+  if (k.length === 1 && !ctrl && !e.altKey && /\S/.test(k)) { e.preventDefault(); typeAhead(k); return; }
   const move = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns(), ArrowUp: -columns(), Home: -1e9, End: 1e9 }[k];
   if (move !== undefined && state.items.length) {
     e.preventDefault();
@@ -1010,18 +1212,33 @@ document.addEventListener('keydown', (e) => {
     selectIndex(n, { shift: e.shiftKey, ctrl: false });
   }
 });
+// Explorer-style: typing a name jumps to the folder or file; the same letter again goes to the next one.
+let typed = '', typedAt = 0;
+function typeAhead(ch) {
+  const now = performance.now();
+  typed = now - typedAt > 900 ? ch.toLowerCase() : typed + ch.toLowerCase();
+  typedAt = now;
+  const repeat = typed.length > 1 && [...typed].every((c) => c === typed[0]);
+  const prefix = repeat ? typed[0] : typed;
+  const n = state.items.length;
+  const from = typed.length === 1 || repeat ? state.focus + 1 : Math.max(0, state.focus);
+  for (let k = 0; k < n; k++) {
+    const i = (from + k + n) % n;
+    if (state.items[i].name.toLowerCase().startsWith(prefix)) { selectIndex(i); return; }
+  }
+}
 document.addEventListener('keyup', (e) => { if (e.key.toLowerCase() === 'b') setBefore(false); });
 
 // ------------------------------------------------------------------ panel wiring
 
 $$('.slider').forEach((el) => {
   const [r, n] = sliderInputs(el);
-  r.addEventListener('input', () => { n.value = r.value; editChanged(); });
-  n.addEventListener('change', () => { r.value = n.value; paintRange(r); editChanged(); });
+  r.addEventListener('input', () => { n.value = r.value; controlsChanged(); });
+  n.addEventListener('change', () => { r.value = n.value; paintRange(r); controlsChanged(); });
 });
-$('#tone-method').addEventListener('change', () => { applyRanges(Number($('#tone-method').value), true); editChanged(); });
-$$('#tone-flags input, #sharp-mode').forEach((el) => el.addEventListener('change', editChanged));
-$('#target').addEventListener('change', () => { refreshTarget(); });
+$('#tone-method').addEventListener('change', () => { applyRanges(Number($('#tone-method').value), true); controlsChanged(); });
+$$('#tone-flags input, #sharp-mode').forEach((el) => el.addEventListener('change', controlsChanged));
+$('#target').addEventListener('change', () => setTarget($('#target').value));
 
 $('#thumb-size').addEventListener('input', (e) => {
   state.settings.thumbSize = Number(e.target.value);
@@ -1085,11 +1302,12 @@ async function start() {
   applyGridLayout(false);
   $('#show-names').checked = init.settings.showNames ?? true;
   $('#grid').classList.toggle('nonames', !$('#show-names').checked);
-  resetEdit();
+  loadControls(state.global);
   setUndo(init.undo);
 
   state.roots = await call('fs.roots');
   renderTree();
+  call('rescan.list').then((r) => setRescanCount(r.entries.length)).catch(() => {});
   const startPath = init.smokeFolder || init.settings.lastFolder;
   if (startPath) await openFolder(startPath).catch(() => {});
   $('#grid-wrap').focus();
@@ -1117,15 +1335,30 @@ window.__loupeSelfTest = async () => {
     ok('thumbnails', await until(() => $$('#grid img.ok').length >= 6));
     openViewer(0);
     ok('viewer', await until(() => $('#v-img').complete && $('#v-img').naturalWidth > 0 && $('#v-img').src.includes('/view')));
-    setSlider('brightness', 25); editChanged();
-    await sleep(500);
-    await applyEdit();
+    const conf0 = window.confirm; window.confirm = () => true;
+    setTarget('all');
+    setSlider('brightness', 25); controlsChanged();
+    ok('global-preview', await until(() => $$('#grid img').every((im) => im.dataset.src.includes('&e='))));
+    resetCorrection();
+    setTarget('sel');
+    setSlider('brightness', 25); controlsChanged();
+    ok('own-preview', state.own.size === 1 && pendingItems().length === 1);
+    await sleep(400);
+    await saveChanges();
+    window.confirm = conf0;
     ok('edit', await until(() => state.images[0]?.edited));
     await restoreOriginals();
     ok('restore', await until(() => !state.images[0]?.edited));
+    await toggleRescan();
+    ok('rescan-mark', await until(() => state.images[0]?.rescan && !$('#rescan-count').hidden));
+    await openRescan();
+    const film = $('#rs-table input[data-k=microfilm]');
+    film.value = '123-213'; film.dispatchEvent(new Event('change', { bubbles: true }));
+    ok('rescan-list', await until(() => $('#rs-table input[data-k=microfilm]')?.value === '123-213'));
+    $('#rescan-dlg').close();
     closeViewer();
 
-    $('#target').value = 'one';
+    setTarget('all');
     commands.selectAll();
     openRename();
     $('#rn-pattern').value = '{folder}_{n}'; $('#rn-digits').value = 5; $('#rn-start').value = 1; planRename();
@@ -1138,10 +1371,11 @@ window.__loupeSelfTest = async () => {
     ok('rename-undo', await until(() => state.images[0]?.name === '73_524_0_0_80_00001.jpg'));
 
     await openFolder(sig);
+    ok('open-parent', state.folders.length === 3, { path: state.path });
     state.selected = new Set(state.items.map((it, i) => (isPartName(it.name) ? i : -1)).filter((i) => i >= 0));
     paintSelection();
     openMerge();
-    ok('merge-plan', await until(() => !$('#mg-run').disabled));
+    ok('merge-plan', await until(() => !$('#mg-run').disabled), { problems: $('#mg-problems').textContent });
     $('#mg-run').click();
     ok('merge', await until(() => state.folders.some((f) => f.name === '123') && !state.folders.some((f) => f.name === '123_1')));
     await undo();
@@ -1158,8 +1392,8 @@ window.__loupeSelfTest = async () => {
 };
 
 window.__loupeShow = (what) => {
-  if (what === 'viewer') { setSlider('contrast', 18); editChanged(); openViewer(1); }
-  if (what === 'rename') { closeViewer(); resetEdit(); commands.selectAll(); openRename(); }
+  if (what === 'viewer') { setTarget('all'); setSlider('contrast', 18); controlsChanged(); openViewer(1); }
+  if (what === 'rename') { closeViewer(); discardChanges(); commands.selectAll(); openRename(); }
 };
 
 start();

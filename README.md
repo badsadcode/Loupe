@@ -10,7 +10,9 @@ Striplight PRO engine (libjpeg-turbo + the Striplight tone methods).
   Thumbnail size or a fixed number of columns; Ctrl+wheel changes either.
 - **View** with zoom / pan / 1:1, next / previous with read-ahead.
 - **Correct** tone (all Striplight methods, rescue curves, strength), sharpen, negative,
-  rotate and mirror — on one image or a whole selection — with a live preview and "Before" (hold B).
+  rotate and mirror. As in Striplight PRO: a **global** correction for the whole folder and
+  **own** corrections for single images (orange), locked against later global changes. Thumbnails
+  and the viewer show the preview; nothing touches the files until **Save changes**. Hold B for "Before".
   - The **original is kept** (outside the archive folders, under `%LOCALAPPDATA%\Loupe\Originals`),
     so "Restore original" always returns the file as it was before Loupe touched it.
   - Saved at the **same JPEG quality** as the original (estimated from the file), keeping its

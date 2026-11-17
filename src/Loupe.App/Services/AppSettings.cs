@@ -44,6 +44,9 @@ public sealed class AppSettings
     public string BackupRoot => string.IsNullOrWhiteSpace(BackupFolder) ? Path.Combine(DataFolder, "Originals") : BackupFolder;
     public string ThumbRoot => string.IsNullOrWhiteSpace(ThumbFolder) ? Path.Combine(DataFolder, "Thumbs") : ThumbFolder;
     public static string UndoRoot => Path.Combine(DataFolder, "Undo");
+    public static string RescanFile => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loupe", "rescan.json");
+    public bool RescanHeaders { get; set; }
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loupe", "settings.json");

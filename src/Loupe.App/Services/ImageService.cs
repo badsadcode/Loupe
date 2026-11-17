@@ -24,7 +24,7 @@ public sealed class ImageService(AppController controller)
     private readonly SemaphoreSlim _viewGate = new(Math.Clamp(Environment.ProcessorCount / 2, 2, 4));
     private readonly ConcurrentDictionary<string, byte[]> _cache = new();
     private readonly ConcurrentQueue<string> _cacheOrder = new();
-    private const int CacheItems = 48;
+    private const int CacheItems = 600;   // thumbnails are small; views are few
     private readonly object _decodedLock = new();
     private readonly LinkedList<(string Key, DecodedImage Image)> _decoded = new();
     private const int DecodedItems = 4;
@@ -52,7 +52,8 @@ public sealed class ImageService(AppController controller)
                 if (kind == "thumb")
                 {
                     int size = Math.Clamp(int.TryParse(q["s"], out int s) ? s : 256, 64, 1024);
-                    bytes = await Gated(_thumbGate, () => renderer.Thumbnail(path, size));
+                    var edit = ParseEdit(q["e"]);
+                    bytes = await Gated(_thumbGate, () => renderer.Thumbnail(path, size, edit));
                 }
                 else
                 {

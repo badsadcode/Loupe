@@ -291,3 +291,46 @@ public class MergeTests
     public void PrefixReplacement(string prefix, string part, string baseName, string expected) =>
         Assert.Equal(expected, PartMerger.ReplacePartInPrefix(prefix, part, baseName));
 }
+
+public class RescanTests
+{
+    [Fact]
+    public void MicrofilmFillsTheFolderAndEntriesFollowRenames()
+    {
+        using var t = new TempDir();
+        var list = new RescanList(t.File("rescan.json"));
+        string a = Path.Combine("D:", "QC", "73", "80", "a.jpg"), b = Path.Combine("D:", "QC", "73", "80", "b.jpg"), c = Path.Combine("D:", "QC", "73", "81", "c.jpg");
+        Assert.Equal(3, list.Set([a, b, c], true));
+        list.Update(a, "Out of focus", "1234");
+        Assert.Equal("1234", list.Entries.Single(e => e.Path == b).Microfilm);   // same folder
+        Assert.Equal("", list.Entries.Single(e => e.Path == c).Microfilm);       // other folder
+        string d = Path.Combine("D:", "QC", "73", "80", "d.jpg");
+        list.Set([d], true);
+        Assert.Equal("1234", list.Entries.Single(e => e.Path == d).Microfilm);   // new entry takes the folder's number
+
+        list.Follow([new MovePair(a, a.Replace("a.jpg", "z.jpg"))]);
+        var again = new RescanList(t.File("rescan.json"));                       // saved and reloaded
+        Assert.Contains(again.Entries, e => e.Path.EndsWith("z.jpg") && e.Reason == "Out of focus");
+        Assert.Equal(1, again.Set([b], false));
+        Assert.Equal(3, again.Entries.Count);
+    }
+
+    [Fact]
+    public void FolderIsRelativeToTheLongestRoot()
+    {
+        string sep = Path.DirectorySeparatorChar.ToString();
+        string file = string.Join(sep, "", "mnt", "d", "QC", "73", "524", "0", "0", "80", "x.jpg");
+        string drive = string.Join(sep, "", "mnt", "d"), pinned = string.Join(sep, "", "mnt", "d", "QC");
+        Assert.Equal(string.Join(sep, "73", "524", "0", "0", "80"), RescanList.RelativeFolder(file, [drive, pinned]));
+        Assert.Equal(string.Join(sep, "QC", "73", "524", "0", "0", "80"), RescanList.RelativeFolder(file, [drive]));
+    }
+
+    [Fact]
+    public void CsvAndTsv()
+    {
+        var rows = new List<string[]> { new[] { "1234", "73\\80", "a;b.jpg", "Too \"dark\"", "2026-11-17 10:00", "D:\\x" } };
+        string csv = System.Text.Encoding.UTF8.GetString(RescanList.ToCsv(rows, ["M", "F", "N", "R", "D", "P"]));
+        Assert.Contains("\"a;b.jpg\";\"Too \"\"dark\"\"\"", csv);
+        Assert.Equal("1234\t73\\80\ta;b.jpg\tToo \"dark\"\t2026-11-17 10:00\tD:\\x", RescanList.ToTsv(rows, null));
+    }
+}

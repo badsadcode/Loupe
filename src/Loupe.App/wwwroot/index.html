@@ -17,6 +17,7 @@
       <button class="btn btn-ghost" data-cmd="rename" title="Rename the selected images (F2)"><i data-icon="text-cursor-input"></i>Rename</button>
       <button class="btn btn-ghost" data-cmd="merge" title="Merge part folders such as 123_1 and 123_2 into 123"><i data-icon="merge"></i>Merge parts</button>
       <button class="btn btn-ghost" data-cmd="undo" id="undo-btn" disabled title="Undo the last rename or merge"><i data-icon="undo-2"></i>Undo</button>
+      <button class="btn btn-ghost" data-cmd="rescanList" title="Images marked for rescanning: report with microfilm numbers"><i data-icon="clipboard-list"></i>Rescan list<span class="chip count-chip" id="rescan-count" hidden data-no-i18n></span></button>
       <span class="appbar-sep"></span>
       <button class="icon-btn" data-cmd="settings" title="Settings and themes"><i data-icon="settings" data-size="17"></i></button>
       <button class="icon-btn" data-cmd="help" title="Keyboard shortcuts (F1)"><i data-icon="circle-help" data-size="17"></i></button>
@@ -44,6 +45,7 @@
         <span class="grow"></span>
         <button class="btn btn-ghost sm" data-cmd="selectAll" title="Select all images (Ctrl+A)"><i data-icon="list-checks"></i>Select all</button>
         <button class="btn btn-ghost sm" data-cmd="selectEdited" title="Select every edited image in this folder"><i data-icon="pencil-line"></i>Select edited</button>
+        <button class="btn btn-ghost sm" data-cmd="rescanToggle" title="Mark the selected images for rescanning, or unmark them (Ctrl+R)"><i data-icon="flag"></i>Rescan</button>
         <span class="tb-sep"></span>
         <i data-icon="grid-2x2"></i>
         <select id="cols" class="sm" title="Columns: Auto follows the size slider (Ctrl+wheel changes either)">
@@ -72,6 +74,7 @@
           <button class="icon-btn" data-cmd="next" title="Next image (C / →)"><i data-icon="chevron-right"></i></button>
           <span class="v-name" id="v-name" data-no-i18n></span>
           <span class="grow"></span>
+          <button class="btn btn-ghost sm toggle" id="v-flag-btn" data-cmd="rescanToggle" title="Mark this image for rescanning, or unmark it (Ctrl+R)"><i data-icon="flag"></i>Rescan</button>
           <button class="btn btn-ghost sm toggle" id="before-btn" data-cmd="before" title="Hold B to see the file without the correction"><i data-icon="eye"></i>Before</button>
           <span class="tb-sep"></span>
           <button class="icon-btn" data-cmd="zoomOut" title="Zoom out (-)"><i data-icon="zoom-out"></i></button>
@@ -84,6 +87,7 @@
           <img id="v-img" alt="" draggable="false">
           <div class="v-loading" id="v-loading" hidden></div>
           <div class="v-badge" id="v-badge" hidden>Before</div>
+          <div class="v-flag" id="v-flag" hidden><i data-icon="flag"></i>Marked for rescanning</div>
         </div>
       </div>
     </section>
@@ -94,7 +98,7 @@
         <div class="section first">
           <h3>Correct</h3>
           <div class="seg" id="target" role="radiogroup" aria-label="Apply to">
-            <button data-v="one" id="target-one">This image</button><button data-v="sel" id="target-sel">Selected</button>
+            <button data-v="all" id="target-all">All images</button><button data-v="sel" id="target-sel">Selected</button>
           </div>
           <p class="hint" id="target-hint"></p>
         </div>
@@ -135,10 +139,11 @@
         </div>
         <div class="section">
           <div class="btn-row">
-            <button class="btn btn-primary grow" data-cmd="apply" id="apply-btn" title="Save the correction into the file (Ctrl+S); the original is kept"><i data-icon="save"></i><span id="apply-label">Save to file</span></button>
-            <button class="btn" data-cmd="reset" title="Back to neutral (no correction)"><i data-icon="rotate-ccw"></i>Reset</button>
+            <button class="btn btn-primary grow" data-cmd="apply" id="apply-btn" title="Write the corrections into the files (Ctrl+S); the originals are kept"><i data-icon="save"></i><span id="apply-label">Save changes</span></button>
+            <button class="btn" data-cmd="reset" id="reset-btn" title="Back to neutral (no correction)"><i data-icon="rotate-ccw"></i><span id="reset-label">Reset</span></button>
           </div>
-          <label class="switch"><input type="checkbox" id="keep-edit"><span></span>Keep the correction after saving</label>
+          <p class="hint pending" id="pending"></p>
+          <button class="btn btn-ghost" data-cmd="discard" id="discard-btn" hidden title="Forget every correction that is not saved yet"><i data-icon="x"></i>Discard unsaved changes</button>
           <button class="btn btn-ghost" data-cmd="restore" id="restore-btn" title="Put the original file back (Ctrl+Shift+Z)"><i data-icon="history"></i><span id="restore-label">Restore original</span></button>
         </div>
         <div class="info-card" id="info" hidden data-no-i18n></div>
@@ -232,6 +237,29 @@
     </div>
   </dialog>
 
+  <!-- ============================================================ rescan list -->
+  <dialog class="modal wide" id="rescan-dlg">
+    <div class="modal-head"><h2><i data-icon="clipboard-list"></i>Rescan list</h2><span class="chip" id="rs-count" data-no-i18n></span>
+      <button class="icon-btn push" data-close title="Close"><i data-icon="x"></i></button></div>
+    <div class="rescan-body">
+      <p class="hint"><i data-icon="info"></i>Images marked as beyond repair. Type the microfilm number once per folder: the other images of that folder get it too. Click a file name to show it.</p>
+      <div class="table-wrap"><table class="plan rescan" id="rs-table"><thead></thead><tbody></tbody></table></div>
+      <div class="empty-note" id="rs-empty">Nothing marked yet. Select images and press Ctrl+R (or the Rescan button) to add them.</div>
+    </div>
+    <datalist id="rs-reasons">
+      <option value="Out of focus"></option><option value="Too dark"></option><option value="Too bright"></option>
+      <option value="Cut off"></option><option value="Damaged film"></option><option value="Skewed"></option>
+      <option value="Page missing"></option><option value="Double exposure"></option>
+    </datalist>
+    <div class="modal-foot">
+      <label class="switch"><input type="checkbox" id="rs-headers"><span></span>Copy with headers</label>
+      <span class="grow"></span>
+      <button class="btn btn-danger" data-cmd="rescanClear"><i data-icon="trash-2"></i>Clear list</button>
+      <button class="btn" data-cmd="rescanCsv"><i data-icon="file-spreadsheet"></i>Save CSV…</button>
+      <button class="btn btn-primary" data-cmd="rescanCopy"><i data-icon="copy"></i>Copy for Excel</button>
+    </div>
+  </dialog>
+
   <!-- ============================================================ settings dialog -->
   <dialog class="modal" id="settings-dlg">
     <div class="modal-head"><h2><i data-icon="settings"></i>Settings</h2>
@@ -303,7 +331,9 @@
         <p><kbd data-no-i18n>Backspace</kbd><span>Up one folder</span></p>
         <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>A</kbd><span>Select all images</span></p>
         <p><kbd data-no-i18n>Ctrl</kbd>/<kbd data-no-i18n>Shift</kbd>+click<span>Add to selection / select a range</span></p>
+        <p><kbd data-no-i18n>A</kbd>…<kbd data-no-i18n>Z</kbd><span>Type a name: jump to the folder or file</span></p>
         <p><kbd data-no-i18n>F2</kbd><span>Rename</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>R</kbd><span>Mark for rescanning / unmark</span></p>
         <p><kbd data-no-i18n>F5</kbd><span>Refresh</span></p>
         <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>Z</kbd><span>Undo the last rename or merge</span></p>
       </div>
@@ -315,7 +345,7 @@
         <p><kbd data-no-i18n>B</kbd> (hold)<span>Before: without the correction</span></p>
         <p><kbd data-no-i18n>R</kbd> / <kbd data-no-i18n>Shift</kbd>+<kbd data-no-i18n>R</kbd><span>Rotate right / left</span></p>
         <p><kbd data-no-i18n>M</kbd> / <kbd data-no-i18n>N</kbd><span>Mirror / negative</span></p>
-        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>S</kbd><span>Save the correction to the file</span></p>
+        <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>S</kbd><span>Save the corrections to the files</span></p>
         <p><kbd data-no-i18n>Ctrl</kbd>+<kbd data-no-i18n>Shift</kbd>+<kbd data-no-i18n>Z</kbd><span>Restore the original</span></p>
         <p><kbd data-no-i18n>Esc</kbd><span>Back to the thumbnails</span></p>
       </div>
